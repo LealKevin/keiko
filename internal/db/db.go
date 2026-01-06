@@ -139,11 +139,22 @@ func (db *DB) ResetSeenWords(level int) error {
 	return nil
 }
 
-func (db *DB) GetWordsCount() (int, error) {
+func (db *DB) GetWordsCount(levels []int) (int, error) {
 	var count int
-	err := db.QueryRow(`
+	placeholder := make([]string, len(levels))
+	args := make([]interface{}, len(levels))
+
+	for _, level := range levels {
+		placeholder = append(placeholder, "?")
+		args[level] = level
+	}
+
+	query := fmt.Sprintf(`
 		SELECT COUNT(*) 
-		FROM words`).Scan(&count)
+		FROM words
+		WHERE level IN (%s)`, strings.Join(placeholder, ", "))
+
+	err := db.QueryRow(query, args...).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("error getting words count: %s", err)
 	}

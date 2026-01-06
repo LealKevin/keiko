@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LealKevin/keiko/internal/config"
 	"github.com/LealKevin/keiko/internal/data"
 	"github.com/LealKevin/keiko/internal/db"
 	"github.com/LealKevin/keiko/internal/service"
@@ -17,8 +18,13 @@ import (
 	hook "github.com/robotn/gohook"
 )
 
+var (
+	dbFilePath     = "keiko.db"
+	configFilePath = "config.yaml"
+)
+
 func main() {
-	db, err := db.Open("keiko.db")
+	db, err := db.Open(dbFilePath)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -31,7 +37,9 @@ func main() {
 		panic(err)
 	}
 
-	count, err := db.GetWordsCount()
+	allJLPTLevels := []int{1, 2, 3, 4, 5}
+
+	count, err := db.GetWordsCount(allJLPTLevels)
 	if err != nil {
 		panic(err)
 	}
@@ -53,6 +61,12 @@ func main() {
 	statusBar := ui.NewStatusBar(service)
 	statusBar.Init()
 
+	c, err := config.New(configFilePath)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
 	fmt.Println("Setup complete!")
 
 	sigChan := make(chan os.Signal, 1)
@@ -63,7 +77,7 @@ func main() {
 	go func() {
 		for {
 			statusBar.Refresh([]int{5})
-			time.Sleep(time.Minute * 1)
+			time.Sleep(time.Minute * time.Duration(c.UserConfig.LoopInterval))
 		}
 	}()
 	<-sigChan
