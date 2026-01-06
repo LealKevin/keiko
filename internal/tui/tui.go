@@ -3,8 +3,10 @@ package tui
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/LealKevin/keiko/internal/config"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -17,20 +19,25 @@ const (
 )
 
 type model struct {
+	config *config.Config
+
 	Tabs       []string
 	TabContent []string
-	activeTab  int
-	focus      focus
+
+	activeTab int
+	focus     focus
 
 	width  int
 	height int
 }
 
-func New() *model {
+func New(config *config.Config) *model {
 	return &model{
 		Tabs:       []string{"Home", "Settings"},
 		TabContent: []string{"HomeTab", "SettingsTab"},
 		focus:      focusTabs,
+
+		config: config,
 	}
 }
 
@@ -66,7 +73,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k", ",":
 			m.focus = focusTabs
 			return m, nil
+
+		// testing purposes
+		case "t", "T":
+			m.config.UserConfig.LoopInterval++
+			m.config.Save()
+			return m, nil
+		case "s", "S":
+			m.config.UserConfig.LoopInterval--
+			m.config.Save()
+			return m, nil
 		}
+
 	}
 
 	return m, nil
@@ -80,10 +98,10 @@ var (
 			Foreground(lipgloss.Color("240")).
 			Padding(0, 1)
 
-	container = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Margin(1, 1)
+	containerInactive = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(lipgloss.Color("240")).
+				Margin(1, 1)
 
 	containerActive = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -93,7 +111,31 @@ var (
 	containerMargin = 10
 )
 
+func (m model) settingsView() string {
+	var doc strings.Builder
+
+	doc.WriteString(lipgloss.NewStyle().Bold(true).Render("Settings"))
+	doc.WriteString("\n\n")
+
+	label := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Loop Interval: ")
+	value := lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render(strconv.Itoa(m.config.UserConfig.LoopInterval))
+
+	doc.WriteString(label + value)
+	doc.WriteString("\n\n")
+	doc.WriteString(lipgloss.NewStyle().Italic(true).Render("(Press T to increase, S to decrease)"))
+
+	return doc.String()
+}
+
 func (m model) View() string {
+	var content string
+	switch m.activeTab {
+	case 0:
+		content = m.TabContent[0]
+	case 1:
+		content = m.settingsView()
+	}
+
 	var doc strings.Builder
 
 	if m.focus == focusContainer {
@@ -114,9 +156,9 @@ func (m model) View() string {
 	doc.WriteString("\n")
 
 	if m.focus == focusTabs {
-		doc.WriteString(container.Width(m.width - containerMargin).Height(m.height - containerMargin).Render(m.TabContent[m.activeTab]))
+		doc.WriteString(containerInactive.Width(m.width - containerMargin).Height(m.height - containerMargin).Render(content))
 	} else {
-		doc.WriteString(containerActive.Width(m.width - 10).Height(m.height - 10).Render(m.TabContent[m.activeTab]))
+		doc.WriteString(containerActive.Width(m.width - 10).Height(m.height - 10).Render(content))
 	}
 
 	return lipgloss.Place(

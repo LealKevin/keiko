@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 	"go.yaml.in/yaml/v3"
 )
@@ -16,16 +18,22 @@ type Config struct {
 	FilePath   string
 	Viper      *viper.Viper
 	UserConfig UserConfig
+	Updated    chan bool
 }
 
 func New(filePath string) (*Config, error) {
 	return &Config{
 		FilePath: filePath,
 		Viper:    viper.New(),
+		Updated:  make(chan bool, 1),
 	}, nil
 }
 
 func (c *Config) Init() error {
+	wd, _ := os.Getwd()
+	fmt.Println("Working directory:", wd)
+	fmt.Println("Config file:", c.FilePath)
+
 	c.Viper.SetConfigFile(c.FilePath)
 	c.Viper.SetConfigType("yaml")
 
@@ -39,7 +47,24 @@ func (c *Config) Init() error {
 		}
 	}
 
+	err = c.Viper.Unmarshal(&c.UserConfig)
+	if err != nil {
+		fmt.Println("Error unmarshalling config", err)
+	}
+
 	return c.Viper.Unmarshal(&c.UserConfig)
+}
+
+func (c *Config) Watch() {
+	c.Viper.OnConfigChange(func(in fsnotify.Event) {
+		c.Viper.Unmarshal(&c.UserConfig)
+		select {
+		case c.Updated <- true:
+		default:
+		}
+	})
+
+	c.Viper.WatchConfig()
 }
 
 func (c *Config) Save() error {
