@@ -75,3 +75,21 @@ func (c *Config) Save() error {
 
 	return os.WriteFile(c.FilePath, data, 0o644)
 }
+
+func (c *Config) DecreaseInterval() {
+	if c.UserConfig.LoopInterval == 30 {
+		c.Save()
+		return
+	}
+	if c.UserConfig.LoopInterval >= 60 {
+		c.UserConfig.LoopInterval -= 30
+		c.Save()
+	}
+}
+
+func (c *Config) IncreaseInterval() {
+	if c.UserConfig.LoopInterval < 3600 {
+		c.UserConfig.LoopInterval += 30
+		c.Save()
+	}
+}

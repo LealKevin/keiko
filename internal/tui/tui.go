@@ -3,10 +3,10 @@ package tui
 import (
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/LealKevin/keiko/internal/config"
+	"github.com/LealKevin/keiko/internal/tui/pages/settings"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -21,6 +21,8 @@ const (
 type model struct {
 	config *config.Config
 
+	settings *settings.Model
+
 	Tabs       []string
 	TabContent []string
 
@@ -32,10 +34,14 @@ type model struct {
 }
 
 func New(config *config.Config) *model {
+	settings := settings.New(config)
+
 	return &model{
 		Tabs:       []string{"Home", "Settings"},
 		TabContent: []string{"HomeTab", "SettingsTab"},
 		focus:      focusTabs,
+
+		settings: settings,
 
 		config: config,
 	}
@@ -47,14 +53,31 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+
+	case settings.BlurSettingsMsg:
+		m.focus = focusTabs
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.focus == focusContainer {
+			if m.activeTab == 1 { // settings tab
+				_, cmd := m.settings.Update(msg)
+				return m, cmd
+			}
+		}
+
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c", "q", "esc":
+			if m.focus == focusContainer {
+				m.activeTab = 0
+				m.focus = focusTabs
+				return m, tea.Quit
+			}
 			return m, tea.Quit
 		case "right", "l", "n", "tab":
 			if m.focus == focusTabs {
@@ -73,20 +96,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k", ",":
 			m.focus = focusTabs
 			return m, nil
-
-		// testing purposes
-		case "t", "T":
-			m.config.UserConfig.LoopInterval++
-			m.config.Save()
-			return m, nil
-		case "s", "S":
-			m.config.UserConfig.LoopInterval--
-			m.config.Save()
-			return m, nil
 		}
 
 	}
-
 	return m, nil
 }
 
@@ -97,35 +109,8 @@ var (
 	inactiveColor = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240")).
 			Padding(0, 1)
-
-	containerInactive = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("240")).
-				Margin(1, 1)
-
-	containerActive = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("205")).
-			Margin(1, 1)
-
 	containerMargin = 10
 )
-
-func (m model) settingsView() string {
-	var doc strings.Builder
-
-	doc.WriteString(lipgloss.NewStyle().Bold(true).Render("Settings"))
-	doc.WriteString("\n\n")
-
-	label := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Loop Interval: ")
-	value := lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render(strconv.Itoa(m.config.UserConfig.LoopInterval))
-
-	doc.WriteString(label + value)
-	doc.WriteString("\n\n")
-	doc.WriteString(lipgloss.NewStyle().Italic(true).Render("(Press T to increase, S to decrease)"))
-
-	return doc.String()
-}
 
 func (m model) View() string {
 	var content string
@@ -133,7 +118,7 @@ func (m model) View() string {
 	case 0:
 		content = m.TabContent[0]
 	case 1:
-		content = m.settingsView()
+		content = m.settings.View(m.focus == focusContainer)
 	}
 
 	var doc strings.Builder
@@ -156,9 +141,9 @@ func (m model) View() string {
 	doc.WriteString("\n")
 
 	if m.focus == focusTabs {
-		doc.WriteString(containerInactive.Width(m.width - containerMargin).Height(m.height - containerMargin).Render(content))
+		doc.WriteString(content)
 	} else {
-		doc.WriteString(containerActive.Width(m.width - 10).Height(m.height - 10).Render(content))
+		doc.WriteString(content)
 	}
 
 	return lipgloss.Place(

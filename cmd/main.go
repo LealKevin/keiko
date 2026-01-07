@@ -102,18 +102,18 @@ func main() {
 	go keyboardListener()
 
 	go func() {
-		ticker := time.NewTicker(time.Minute * time.Duration(c.UserConfig.LoopInterval))
+		ticker := time.NewTicker(time.Second * time.Duration(c.UserConfig.LoopInterval))
 		for {
 			select {
 			case <-ticker.C:
 				fmt.Println("Interval is", c.UserConfig.LoopInterval)
 				fmt.Printf("Interval from viper: %d", c.Viper.GetInt("loop_interval"))
 				statusBar.Refresh(c.UserConfig.JLPTLevel)
-				ticker.Reset(time.Minute * time.Duration(c.UserConfig.LoopInterval))
+				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
 			case <-c.Updated:
 				fmt.Println("Config changed! Reloading...")
 				fmt.Println("New interval:", c.UserConfig.LoopInterval)
-				ticker.Reset(time.Minute * time.Duration(c.UserConfig.LoopInterval))
+				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
 			case <-sigChan:
 				fmt.Println("Exiting...")
 				statusBar.Close()
