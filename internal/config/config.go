@@ -12,6 +12,10 @@ import (
 type UserConfig struct {
 	LoopInterval int   `mapstructure:"loop_interval" yaml:"loop_interval"`
 	JLPTLevel    []int `mapstructure:"jlpt_level" yaml:"jlpt_level"`
+
+	IsFuriganaVisible    bool `mapstructure:"is_furigana_visible" yaml:"is_furigana_visible"`
+	IsJLPTLevelVisible   bool `mapstructure:"is_jlpt_level_visible" yaml:"is_jlpt_level_visible"`
+	IsTranslationVisible bool `mapstructure:"is_translation_visible" yaml:"is_translation_visible"`
 }
 
 type Config struct {
@@ -39,6 +43,9 @@ func (c *Config) Init() error {
 
 	c.Viper.SetDefault("loop_interval", 10)
 	c.Viper.SetDefault("jlpt_level", []int{1, 2, 3, 4, 5})
+	c.Viper.SetDefault("is_furigana_visible", true)
+	c.Viper.SetDefault("is_jlpt_level_visible", true)
+	c.Viper.SetDefault("is_translation_visible", true)
 
 	err := c.Viper.ReadInConfig()
 	if err != nil {
@@ -92,4 +99,19 @@ func (c *Config) IncreaseInterval() {
 		c.UserConfig.LoopInterval += 30
 		c.Save()
 	}
+}
+
+func (c *Config) ToggleFurigana() {
+	c.UserConfig.IsFuriganaVisible = !c.UserConfig.IsFuriganaVisible
+	c.Save()
+}
+
+func (c *Config) ToggleJLPTLevel() {
+	c.UserConfig.IsJLPTLevelVisible = !c.UserConfig.IsJLPTLevelVisible
+	c.Save()
+}
+
+func (c *Config) ToggleTranslation() {
+	c.UserConfig.IsTranslationVisible = !c.UserConfig.IsTranslationVisible
+	c.Save()
 }

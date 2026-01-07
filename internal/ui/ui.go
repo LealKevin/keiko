@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"os/exec"
 
+	"github.com/LealKevin/keiko/internal/config"
+	"github.com/LealKevin/keiko/internal/data"
 	"github.com/LealKevin/keiko/internal/service"
 )
 
 type statusBar struct {
-	svc service.VocabService
+	svc         service.VocabService
+	cfg         *config.Config
+	currentWord *data.Word
 }
 
 type StatusBarUI interface {
@@ -18,9 +22,10 @@ type StatusBarUI interface {
 	Close()
 }
 
-func NewStatusBar(svc service.VocabService) StatusBarUI {
+func NewStatusBar(svc service.VocabService, cfg *config.Config) *statusBar {
 	return &statusBar{
 		svc: svc,
+		cfg: cfg,
 	}
 }
 
@@ -36,16 +41,42 @@ const (
 	align     = "centre"
 )
 
-func (s *statusBar) Refresh(levels []int) error {
+func (s *statusBar) Redraw() error {
+	if s.currentWord == nil {
+		return nil
+	}
+	word := s.currentWord
+
+	translation := ""
+	if s.cfg.UserConfig.IsTranslationVisible {
+		translation = word.Meaning
+	}
+
+	furigana := ""
+	if s.cfg.UserConfig.IsFuriganaVisible {
+		furigana = fmt.Sprintf("【%s】", word.Furigana)
+	}
+
+	jlptLevel := ""
+	if s.cfg.UserConfig.IsJLPTLevelVisible {
+		jlptLevel = fmt.Sprintf("JLPT N%d", word.Level)
+	}
+
+	content := fmt.Sprintf("#[fill=%s bg=%s,fg=%s,align=%s] %s %s  %s %s", fillColor, bgColor, fgColor, align, word.Word, furigana, translation, jlptLevel)
+	s.Update(content)
+
+	return nil
+}
+
+func (s *statusBar) Refresh() error {
+	levels := s.cfg.UserConfig.JLPTLevel
 	word, err := s.svc.GetNextWord(levels)
 	if err != nil {
 		return err
 	}
+	s.currentWord = &word
 
-	content := fmt.Sprintf("#[fill=%s bg=%s,fg=%s,align=%s] %s (%s) — %s — JLPT N%d", fillColor, bgColor, fgColor, align, word.Word, word.Furigana, word.Meaning, word.Level)
-	s.Update(content)
-
-	return nil
+	return s.Redraw()
 }
 
 func (s *statusBar) Update(content string) {

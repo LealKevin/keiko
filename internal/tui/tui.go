@@ -138,7 +138,10 @@ func (m model) View() string {
 		}
 	}
 
-	doc.WriteString("\n")
+	line := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Render(strings.Repeat("─", m.width))
+	doc.WriteString("\n" + line + "\n")
 
 	if m.focus == focusTabs {
 		doc.WriteString(content)
@@ -149,7 +152,7 @@ func (m model) View() string {
 	return lipgloss.Place(
 		m.width,
 		m.height,
-		lipgloss.Center,
+		lipgloss.Left,
 		0,
 		doc.String(),
 	)

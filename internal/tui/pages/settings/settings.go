@@ -17,14 +17,18 @@ type field int
 const (
 	fieldLoopInterval field = iota
 	fieldJLPTLevel
+	fieldVisibility
 	fieldCount
 )
 
 type Model struct {
 	config *config.Config
 
-	focus      field
-	jlptCursor int
+	focus            field
+	jlptCursor       int
+	visibilityCursor int
+
+	visibilityLabels []string
 
 	loopIntervalInput textinput.Model
 }
@@ -41,12 +45,14 @@ func createInput(config *config.Config, field field) textinput.Model {
 
 func New(config *config.Config) *Model {
 	loopIntervalInput := createInput(config, fieldLoopInterval)
+	visibilityLabels := []string{"Furigana", "Translation", "JLPT Level"}
 
 	return &Model{
 		config: config,
 		focus:  fieldLoopInterval,
 
 		loopIntervalInput: loopIntervalInput,
+		visibilityLabels:  visibilityLabels,
 	}
 }
 
@@ -77,33 +83,46 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 			m.focus = max(m.focus-1, 0)
 			return m, nil
 		case "right", "l":
-			if m.focus == fieldJLPTLevel {
+			switch m.focus {
+			case fieldJLPTLevel:
 				if m.jlptCursor == len(JLPTLEVELS)-1 {
 					return m, nil
 				}
 				m.jlptCursor = max(m.jlptCursor+1, 0)
-			}
 
-			if m.focus == fieldLoopInterval {
-				m.config.IncreaseInterval()
-				m.config.Save()
+				if m.focus == fieldLoopInterval {
+					m.config.IncreaseInterval()
+					m.config.Save()
+				}
+			case fieldVisibility:
+				if m.visibilityCursor == len(m.visibilityLabels)-1 {
+					return m, nil
+				}
+				m.visibilityCursor = max(m.visibilityCursor+1, 0)
 			}
 			return m, nil
 		case "left", "h":
-			if m.focus == fieldJLPTLevel {
+			switch m.focus {
+			case fieldJLPTLevel:
 				if m.jlptCursor == 0 {
 					return m, nil
 				}
 				m.jlptCursor = min(m.jlptCursor-1, len(JLPTLEVELS)-1)
-			}
 
-			if m.focus == fieldLoopInterval {
-				m.config.DecreaseInterval()
-				m.config.Save()
+				if m.focus == fieldLoopInterval {
+					m.config.DecreaseInterval()
+					m.config.Save()
+				}
+			case fieldVisibility:
+				if m.visibilityCursor == 0 {
+					return m, nil
+				}
+				m.visibilityCursor = min(m.visibilityCursor-1, len(m.visibilityLabels)-1)
 			}
 			return m, nil
 		case " ", "enter":
-			if m.focus == fieldJLPTLevel {
+			switch m.focus {
+			case fieldJLPTLevel:
 				if slices.Contains(m.config.UserConfig.JLPTLevel, JLPTLEVELS[m.jlptCursor]) {
 					m.config.UserConfig.JLPTLevel = slices.DeleteFunc(m.config.UserConfig.JLPTLevel, func(i int) bool {
 						return i == JLPTLEVELS[m.jlptCursor]
@@ -116,9 +135,20 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					m.config.Save()
 					return m, nil
 				}
+			case fieldVisibility:
+				if m.visibilityCursor == 0 {
+					m.config.ToggleFurigana()
+				} else if m.visibilityCursor == 1 {
+					m.config.ToggleTranslation()
+				} else if m.visibilityCursor == 2 {
+					m.config.ToggleJLPTLevel()
+				}
+
+				m.config.Save()
 			}
 			return m, nil
 		}
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.loopIntervalInput, cmd = m.loopIntervalInput.Update(msg)
@@ -156,9 +186,16 @@ func (m *Model) View(focused bool) string {
 		m.renderJLPTField(focused),
 	}...)
 
+	visibility := lipgloss.JoinHorizontal(lipgloss.Center, []string{
+		m.renderField("Visibility: ", focused && m.focus == fieldVisibility),
+		m.renderVisibilityField(focused),
+	}...)
+
 	doc.WriteString(interval)
 	doc.WriteString("\n")
 	doc.WriteString(jlpt)
+	doc.WriteString("\n")
+	doc.WriteString(visibility)
 
 	return doc.String()
 }
@@ -195,6 +232,35 @@ func (m *Model) renderJLPTField(focused bool) string {
 		}
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Top, levels...)
+}
+
+func (m *Model) renderVisibilityField(focused bool) string {
+	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true).Underline(true)
+	var visibility []string
+	for i, label := range m.visibilityLabels {
+		isSelected := false
+		if m.config.UserConfig.IsFuriganaVisible && i == 0 {
+			isSelected = true
+		}
+		if m.config.UserConfig.IsTranslationVisible && i == 1 {
+			isSelected = true
+		}
+		if m.config.UserConfig.IsJLPTLevelVisible && i == 2 {
+			isSelected = true
+		}
+		str := fmt.Sprintf("%s", label)
+
+		if focused && m.focus == fieldVisibility && i == m.visibilityCursor {
+			str = cursorStyle.Render(str)
+		}
+
+		if isSelected {
+			visibility = append(visibility, JLPTactiveField.Render(str))
+		} else {
+			visibility = append(visibility, JLPTinactiveField.Render(str))
+		}
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top, visibility...)
 }
 
 func (m *Model) displayIntervalFormat(seconds int) string {

@@ -88,14 +88,18 @@ func main() {
 	}
 
 	service := service.New(db)
-	statusBar := ui.NewStatusBar(service)
+	statusBar := ui.NewStatusBar(service, c)
 	statusBar.Init()
-	statusBar.Refresh(c.UserConfig.JLPTLevel)
+	statusBar.Refresh()
 
 	fmt.Println("Setup complete!")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	c.UserConfig.LoopInterval = 30
+	c.Save()
+	fmt.Println("Interval is", c.UserConfig.LoopInterval)
 
 	c.Watch()
 
@@ -108,12 +112,13 @@ func main() {
 			case <-ticker.C:
 				fmt.Println("Interval is", c.UserConfig.LoopInterval)
 				fmt.Printf("Interval from viper: %d", c.Viper.GetInt("loop_interval"))
-				statusBar.Refresh(c.UserConfig.JLPTLevel)
+				statusBar.Refresh()
 				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
 			case <-c.Updated:
 				fmt.Println("Config changed! Reloading...")
 				fmt.Println("New interval:", c.UserConfig.LoopInterval)
 				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
+				statusBar.Redraw()
 			case <-sigChan:
 				fmt.Println("Exiting...")
 				statusBar.Close()
