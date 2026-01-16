@@ -87,16 +87,17 @@ func (db *DB) GetNextWord(levels []int) (data.Word, error) {
 	}
 
 	query := fmt.Sprintf(`
-		SELECT word, meaning, furigana, romaji, level 
-		FROM words 
-		WHERE seen = 0 AND level IN (%s) 
-		ORDER BY RANDOM() 
+		SELECT id, word, meaning, furigana, romaji, level
+		FROM words
+		WHERE seen = 0 AND level IN (%s)
+		ORDER BY RANDOM()
 		LIMIT 1`,
 		strings.Join(placeholders, ", "),
 	)
 
 	var word data.Word
 	err := db.QueryRow(query, args...).Scan(
+		&word.ID,
 		&word.Word,
 		&word.Meaning,
 		&word.Furigana,
