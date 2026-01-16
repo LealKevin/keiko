@@ -35,8 +35,8 @@ CLAUDE.md
 docs/
 
 # Local binaries
-ai
-news
+/ai
+/news
 
 # Archive
 _archive/
