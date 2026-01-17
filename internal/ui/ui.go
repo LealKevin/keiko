@@ -302,7 +302,9 @@ func (s *StatusBar) AnswerCard(ease int) {
 		return
 	}
 
-	s.dueCount--
+	if ease >= 3 {
+		s.dueCount--
+	}
 	s.fetchNextCard()
 	s.Redraw()
 }
