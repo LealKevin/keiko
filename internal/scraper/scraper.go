@@ -38,7 +38,11 @@ func (s *Scraper) FetchAndProcess(ctx context.Context) error {
 	log.Printf("Found %d news articles", len(newsIDs))
 
 	browser := rod.New().ControlURL(newLauncher().MustLaunch()).MustConnect()
-	defer browser.MustClose()
+	defer func() {
+		if err := browser.Close(); err != nil {
+			log.Printf("Error closing browser: %v", err)
+		}
+	}()
 
 	newCount := 0
 	for _, nhkID := range newsIDs {
@@ -74,7 +78,11 @@ func (s *Scraper) FetchAndProcess(ctx context.Context) error {
 
 func (s *Scraper) fetchNewsIDs() ([]string, error) {
 	browser := rod.New().ControlURL(newLauncher().MustLaunch()).MustConnect()
-	defer browser.MustClose()
+	defer func() {
+		if err := browser.Close(); err != nil {
+			log.Printf("Error closing browser: %v", err)
+		}
+	}()
 
 	page := browser.MustPage("https://www3.nhk.or.jp/news/easy/")
 	defer page.MustClose()
@@ -102,7 +110,7 @@ func (s *Scraper) fetchNewsIDs() ([]string, error) {
 	var newsIDs []string
 	seen := make(map[string]bool)
 	for _, m := range matches {
-		if !seen[m[1]] {
+		if len(m) > 1 && !seen[m[1]] {
 			newsIDs = append(newsIDs, m[1])
 			seen[m[1]] = true
 		}
@@ -185,6 +193,9 @@ func parseJapaneseDate(s string) *time.Time {
 }
 
 func isRateLimitError(err error) bool {
+	if err == nil {
+		return false
+	}
 	return strings.Contains(err.Error(), "429") || strings.Contains(err.Error(), "RESOURCE_EXHAUSTED")
 }
 

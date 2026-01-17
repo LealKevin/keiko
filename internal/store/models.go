@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -47,7 +48,14 @@ func (t *TokensJSON) Scan(value interface{}) error {
 		*t = []Token{}
 		return nil
 	}
-	return json.Unmarshal(value.([]byte), t)
+	switch v := value.(type) {
+	case []byte:
+		return json.Unmarshal(v, t)
+	case string:
+		return json.Unmarshal([]byte(v), t)
+	default:
+		return fmt.Errorf("unsupported type for TokensJSON.Scan: %T", value)
+	}
 }
 
 type NewsList struct {

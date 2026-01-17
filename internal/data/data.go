@@ -26,6 +26,7 @@ func FetchWords() ([]Word, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrorFetchingWords, err)
 	}
+	defer response.Body.Close()
 
 	words := []Word{}
 	err = json.NewDecoder(response.Body).Decode(&words)

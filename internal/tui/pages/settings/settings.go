@@ -89,11 +89,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					return m, nil
 				}
 				m.jlptCursor = max(m.jlptCursor+1, 0)
-
-				if m.focus == fieldLoopInterval {
-					m.config.IncreaseInterval()
-					m.config.Save()
-				}
 			case fieldVisibility:
 				if m.visibilityCursor == len(m.visibilityLabels)-1 {
 					return m, nil
@@ -108,11 +103,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 					return m, nil
 				}
 				m.jlptCursor = min(m.jlptCursor-1, len(JLPTLEVELS)-1)
-
-				if m.focus == fieldLoopInterval {
-					m.config.DecreaseInterval()
-					m.config.Save()
-				}
 			case fieldVisibility:
 				if m.visibilityCursor == 0 {
 					return m, nil
@@ -143,8 +133,6 @@ func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 				} else if m.visibilityCursor == 2 {
 					m.config.ToggleJLPTLevel()
 				}
-
-				m.config.Save()
 			}
 			return m, nil
 		}

@@ -97,40 +97,25 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	c.UserConfig.LoopInterval = 30
-	c.Save()
-	fmt.Println("Interval is", c.UserConfig.LoopInterval)
-
 	c.Watch()
 
 	go keyboardListener()
 
-	go func() {
-		ticker := time.NewTicker(time.Second * time.Duration(c.UserConfig.LoopInterval))
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Println("Interval is", c.UserConfig.LoopInterval)
-				fmt.Printf("Interval from viper: %d", c.Viper.GetInt("loop_interval"))
-				statusBar.Refresh()
-				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
-			case <-c.Updated:
-				fmt.Println("Config changed! Reloading...")
-				fmt.Println("New interval:", c.UserConfig.LoopInterval)
-				ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
-				statusBar.Redraw()
-			case <-sigChan:
-				fmt.Println("Exiting...")
-				statusBar.Close()
-				os.Exit(0)
-			}
+	ticker := time.NewTicker(time.Second * time.Duration(c.UserConfig.LoopInterval))
+	for {
+		select {
+		case <-ticker.C:
+			statusBar.Refresh()
+			ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
+		case <-c.Updated:
+			ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
+			statusBar.Redraw()
+		case <-sigChan:
+			fmt.Println("Exiting...")
+			statusBar.Close()
+			os.Exit(0)
 		}
-	}()
-	<-sigChan
-
-	fmt.Println("Exiting...")
-	statusBar.Close()
-	os.Exit(0)
+	}
 }
 
 func runTui(config *config.Config) {
@@ -144,10 +129,12 @@ func runTui(config *config.Config) {
 func openTui() {
 	path, err := os.Executable()
 	if err != nil {
-		fmt.Println("tmux not found")
+		fmt.Println("Error getting executable path:", err)
 		return
 	}
-	exec.Command("tmux", "display-popup", "-w", "80%", "-h", "80%", "-E", path, "--tui").Run()
+	if err := exec.Command("tmux", "display-popup", "-w", "80%", "-h", "80%", "-E", path, "--tui").Run(); err != nil {
+		fmt.Printf("tmux popup failed: %v\n", err)
+	}
 }
 
 func keyboardListener() {

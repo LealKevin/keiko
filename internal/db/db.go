@@ -86,6 +86,7 @@ func (db *DB) GetNextWord(levels []int) (data.Word, error) {
 		args[i] = level
 	}
 
+	// Safety: levels is an []int from config, not user input, so no SQL injection risk
 	query := fmt.Sprintf(`
 		SELECT id, word, meaning, furigana, romaji, level
 		FROM words
@@ -141,6 +142,10 @@ func (db *DB) ResetSeenWords(level int) error {
 }
 
 func (db *DB) GetWordsCount(levels []int) (int, error) {
+	if len(levels) == 0 {
+		return 0, nil
+	}
+
 	var count int
 
 	placeholders := make([]string, len(levels))

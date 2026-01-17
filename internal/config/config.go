@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -23,6 +24,7 @@ type Config struct {
 	Viper      *viper.Viper
 	UserConfig UserConfig
 	Updated    chan bool
+	mu         sync.RWMutex
 }
 
 func New(filePath string) (*Config, error) {
@@ -54,17 +56,18 @@ func (c *Config) Init() error {
 		}
 	}
 
-	err = c.Viper.Unmarshal(&c.UserConfig)
-	if err != nil {
-		fmt.Println("Error unmarshalling config", err)
+	if err := c.Viper.Unmarshal(&c.UserConfig); err != nil {
+		return fmt.Errorf("error unmarshalling config: %w", err)
 	}
 
-	return c.Viper.Unmarshal(&c.UserConfig)
+	return nil
 }
 
 func (c *Config) Watch() {
 	c.Viper.OnConfigChange(func(in fsnotify.Event) {
+		c.mu.Lock()
 		c.Viper.Unmarshal(&c.UserConfig)
+		c.mu.Unlock()
 		select {
 		case c.Updated <- true:
 		default:
@@ -75,7 +78,9 @@ func (c *Config) Watch() {
 }
 
 func (c *Config) Save() error {
+	c.mu.RLock()
 	data, err := yaml.Marshal(&c.UserConfig)
+	c.mu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -84,34 +89,44 @@ func (c *Config) Save() error {
 }
 
 func (c *Config) DecreaseInterval() {
+	c.mu.Lock()
 	if c.UserConfig.LoopInterval == 30 {
-		c.Save()
+		c.mu.Unlock()
 		return
 	}
 	if c.UserConfig.LoopInterval >= 60 {
 		c.UserConfig.LoopInterval -= 30
-		c.Save()
 	}
+	c.mu.Unlock()
+	c.Save()
 }
 
 func (c *Config) IncreaseInterval() {
+	c.mu.Lock()
 	if c.UserConfig.LoopInterval < 3600 {
 		c.UserConfig.LoopInterval += 30
-		c.Save()
 	}
+	c.mu.Unlock()
+	c.Save()
 }
 
 func (c *Config) ToggleFurigana() {
+	c.mu.Lock()
 	c.UserConfig.IsFuriganaVisible = !c.UserConfig.IsFuriganaVisible
+	c.mu.Unlock()
 	c.Save()
 }
 
 func (c *Config) ToggleJLPTLevel() {
+	c.mu.Lock()
 	c.UserConfig.IsJLPTLevelVisible = !c.UserConfig.IsJLPTLevelVisible
+	c.mu.Unlock()
 	c.Save()
 }
 
 func (c *Config) ToggleTranslation() {
+	c.mu.Lock()
 	c.UserConfig.IsTranslationVisible = !c.UserConfig.IsTranslationVisible
+	c.mu.Unlock()
 	c.Save()
 }

@@ -101,6 +101,10 @@ func (t *Tokenizer) Tokenize(ctx context.Context, text string) ([]store.Token, e
 		return nil, fmt.Errorf("failed to generate content: %w", err)
 	}
 
+	if result == nil || len(result.Candidates) == 0 || result.Candidates[0].Content == nil {
+		return nil, fmt.Errorf("empty response from Gemini API")
+	}
+
 	var response TokenizeResponse
 	if err := json.Unmarshal([]byte(result.Text()), &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)

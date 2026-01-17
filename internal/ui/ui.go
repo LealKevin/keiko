@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"os/exec"
 
 	"github.com/LealKevin/keiko/internal/config"
@@ -30,8 +31,12 @@ func NewStatusBar(svc service.VocabService, cfg *config.Config) *statusBar {
 }
 
 func (s *statusBar) Init() {
-	exec.Command("tmux", "set", "-g", "status", "2").Run()
-	exec.Command("tmux", "set", "-g", "status-format[1]", "").Run()
+	if err := exec.Command("tmux", "set", "-g", "status", "2").Run(); err != nil {
+		log.Printf("tmux status set failed: %v", err)
+	}
+	if err := exec.Command("tmux", "set", "-g", "status-format[1]", "").Run(); err != nil {
+		log.Printf("tmux status-format set failed: %v", err)
+	}
 }
 
 const (
@@ -80,12 +85,20 @@ func (s *statusBar) Refresh() error {
 }
 
 func (s *statusBar) Update(content string) {
-	exec.Command("tmux", "set", "-g", "status-format[1]", content).Run()
+	if err := exec.Command("tmux", "set", "-g", "status-format[1]", content).Run(); err != nil {
+		log.Printf("tmux update failed: %v", err)
+	}
 }
 
 func (s *statusBar) Close() {
-	exec.Command("tmux", "set", "-g", "status", "1").Run()
-	exec.Command("tmux", "set", "-g", "status-format[1]", "").Run()
-	exec.Command("tmux", "set", "-g", "status", "on").Run()
+	if err := exec.Command("tmux", "set", "-g", "status", "1").Run(); err != nil {
+		log.Printf("tmux close status set failed: %v", err)
+	}
+	if err := exec.Command("tmux", "set", "-g", "status-format[1]", "").Run(); err != nil {
+		log.Printf("tmux close format set failed: %v", err)
+	}
+	if err := exec.Command("tmux", "set", "-g", "status", "on").Run(); err != nil {
+		log.Printf("tmux close status on failed: %v", err)
+	}
 	fmt.Println("UI closed")
 }
