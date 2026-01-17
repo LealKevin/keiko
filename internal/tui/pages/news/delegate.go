@@ -46,17 +46,21 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	readIndicator := "  "
+	readIndicator := "● "
 	if item.IsRead {
-		readIndicator = "● "
+		readIndicator = "  "
 	}
 
 	dateStr := item.PublishedAt.Format("01/02")
 
 	title := item.Title
-	maxTitleLen := 20
-	if len([]rune(title)) > maxTitleLen {
-		title = string([]rune(title)[:maxTitleLen-1]) + "…"
+	maxTitleWidth := 24
+	runes := []rune(title)
+	for i := range runes {
+		if lipgloss.Width(string(runes[:i+1])) > maxTitleWidth {
+			title = string(runes[:i]) + "…"
+			break
+		}
 	}
 
 	line1 := fmt.Sprintf("%s%s", readIndicator, dateStr)

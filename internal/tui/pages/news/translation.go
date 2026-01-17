@@ -3,7 +3,6 @@ package news
 import (
 	"fmt"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/LealKevin/keiko/internal/news"
 )
 
@@ -20,14 +19,8 @@ func (t *TranslationPanel) SetWidth(width int) {
 }
 
 func (t *TranslationPanel) View(token *news.Token) string {
-	style := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		Padding(0, 1).
-		Width(t.width)
-
 	if token == nil {
-		return style.Render("Navigate with h/l/j/k to explore tokens")
+		return "Navigate with h/l/j/k to explore tokens"
 	}
 
 	line1 := fmt.Sprintf("%s【%s】%s", token.BaseForm, token.Furigana, token.Translation)
@@ -42,5 +35,5 @@ func (t *TranslationPanel) View(token *news.Token) string {
 		content += "\n" + line2
 	}
 
-	return style.Render(content)
+	return content
 }

@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/LealKevin/keiko/internal/config"
+	"github.com/LealKevin/keiko/internal/db"
+	"github.com/LealKevin/keiko/internal/news"
+	newspage "github.com/LealKevin/keiko/internal/tui/pages/news"
 	"github.com/LealKevin/keiko/internal/tui/pages/settings"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -21,6 +24,7 @@ const (
 type model struct {
 	config *config.Config
 
+	news     *newspage.Model
 	settings *settings.Model
 
 	Tabs       []string
@@ -33,14 +37,16 @@ type model struct {
 	height int
 }
 
-func New(config *config.Config, openDeckSelector bool) *model {
+func New(config *config.Config, database *db.DB, newsClient *news.Client, openDeckSelector bool) *model {
 	settingsModel := settings.New(config, openDeckSelector)
+	newsModel := newspage.New(newsClient, database)
 
 	m := &model{
-		Tabs:       []string{"Home", "Settings"},
-		TabContent: []string{"HomeTab", "SettingsTab"},
+		Tabs:       []string{"News", "Settings"},
+		TabContent: []string{"NewsTab", "SettingsTab"},
 		focus:      focusTabs,
 
+		news:     newsModel,
 		settings: settingsModel,
 
 		config: config,
@@ -55,7 +61,7 @@ func New(config *config.Config, openDeckSelector bool) *model {
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return m.news.Init()
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -68,23 +74,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.news.SetSize(msg.Width, msg.Height-3)
 		return m, nil
 
 	case tea.KeyMsg:
 		if m.focus == focusContainer {
-			if m.activeTab == 1 { // settings tab
+			if m.activeTab == 0 {
+				if m.news.Mode() == newspage.ModeReading {
+					_, cmd := m.news.Update(msg)
+					return m, cmd
+				}
+				switch msg.String() {
+				case "q", "esc":
+					m.focus = focusTabs
+					return m, nil
+				default:
+					_, cmd := m.news.Update(msg)
+					return m, cmd
+				}
+			}
+			if m.activeTab == 1 {
 				_, cmd := m.settings.Update(msg)
 				return m, cmd
 			}
 		}
 
 		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q", "esc":
-			if m.focus == focusContainer {
-				m.activeTab = 0
-				m.focus = focusTabs
-				return m, tea.Quit
-			}
+		case "ctrl+c":
+			return m, tea.Quit
+		case "q", "esc":
 			return m, tea.Quit
 		case "right", "l", "n", "tab":
 			if m.focus == focusTabs {
@@ -96,15 +114,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.activeTab = max(m.activeTab-1, 0)
 			}
 			return m, nil
-		case "down", "j", "m":
+		case "down", "j", "m", "enter":
 			m.focus = focusContainer
-
 			return m, nil
 		case "up", "k", ",":
 			m.focus = focusTabs
 			return m, nil
 		}
 
+	default:
+		if m.activeTab == 0 {
+			_, cmd := m.news.Update(msg)
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -123,7 +145,7 @@ func (m model) View() string {
 	var content string
 	switch m.activeTab {
 	case 0:
-		content = m.TabContent[0]
+		content = m.news.View()
 	case 1:
 		content = m.settings.View(m.focus == focusContainer)
 	}
@@ -150,19 +172,9 @@ func (m model) View() string {
 		Render(strings.Repeat("─", m.width))
 	doc.WriteString("\n" + line + "\n")
 
-	if m.focus == focusTabs {
-		doc.WriteString(content)
-	} else {
-		doc.WriteString(content)
-	}
+	doc.WriteString(content)
 
-	return lipgloss.Place(
-		m.width,
-		m.height,
-		lipgloss.Left,
-		0,
-		doc.String(),
-	)
+	return doc.String()
 }
 
 func (m model) Run() {

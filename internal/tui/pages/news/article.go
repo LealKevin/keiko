@@ -8,17 +8,19 @@ import (
 )
 
 type ArticleView struct {
-	detail *news.NewsDetail
-	tokens []news.Token
-	lines  []tokenLine
-	cursor int
-	width  int
-	height int
+	detail     *news.NewsDetail
+	tokens     []news.Token
+	paraBreaks []int
+	lines      []tokenLine
+	cursor     int
+	width      int
+	height     int
 }
 
 type tokenLine struct {
-	startIdx int
-	endIdx   int
+	startIdx    int
+	endIdx      int
+	isParaBreak bool
 }
 
 func NewArticleView() *ArticleView {
@@ -29,6 +31,7 @@ func (a *ArticleView) SetArticle(detail *news.NewsDetail) {
 	a.detail = detail
 	a.cursor = 0
 	a.tokens = nil
+	a.paraBreaks = nil
 	a.lines = nil
 
 	if detail == nil {
@@ -36,6 +39,9 @@ func (a *ArticleView) SetArticle(detail *news.NewsDetail) {
 	}
 
 	for _, para := range detail.Paragraphs {
+		if len(a.tokens) > 0 {
+			a.paraBreaks = append(a.paraBreaks, len(a.tokens))
+		}
 		a.tokens = append(a.tokens, para.Tokens...)
 	}
 
@@ -48,6 +54,15 @@ func (a *ArticleView) SetSize(width, height int) {
 	a.computeLines()
 }
 
+func (a *ArticleView) isParaBreak(idx int) bool {
+	for _, b := range a.paraBreaks {
+		if b == idx {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *ArticleView) computeLines() {
 	if len(a.tokens) == 0 || a.width == 0 {
 		return
@@ -58,7 +73,14 @@ func (a *ArticleView) computeLines() {
 	lineWidth := 0
 
 	for i, token := range a.tokens {
-		tokenWidth := len([]rune(token.Kana)) + 1
+		if a.isParaBreak(i) && lineStart < i {
+			a.lines = append(a.lines, tokenLine{startIdx: lineStart, endIdx: i - 1})
+			a.lines = append(a.lines, tokenLine{isParaBreak: true})
+			lineStart = i
+			lineWidth = 0
+		}
+
+		tokenWidth := lipgloss.Width(token.Kana) + 1
 
 		if lineWidth+tokenWidth > a.width && lineStart < i {
 			a.lines = append(a.lines, tokenLine{startIdx: lineStart, endIdx: i - 1})
@@ -88,21 +110,27 @@ func (a *ArticleView) MoveRight() {
 
 func (a *ArticleView) MoveDown() {
 	currentLine := a.currentLineIndex()
-	if currentLine < len(a.lines)-1 {
-		a.cursor = a.lines[currentLine+1].startIdx
+	for i := currentLine + 1; i < len(a.lines); i++ {
+		if !a.lines[i].isParaBreak {
+			a.cursor = a.lines[i].startIdx
+			return
+		}
 	}
 }
 
 func (a *ArticleView) MoveUp() {
 	currentLine := a.currentLineIndex()
-	if currentLine > 0 {
-		a.cursor = a.lines[currentLine-1].startIdx
+	for i := currentLine - 1; i >= 0; i-- {
+		if !a.lines[i].isParaBreak {
+			a.cursor = a.lines[i].startIdx
+			return
+		}
 	}
 }
 
 func (a *ArticleView) currentLineIndex() int {
 	for i, line := range a.lines {
-		if a.cursor >= line.startIdx && a.cursor <= line.endIdx {
+		if !line.isParaBreak && a.cursor >= line.startIdx && a.cursor <= line.endIdx {
 			return i
 		}
 	}
@@ -125,7 +153,7 @@ func (a *ArticleView) View() string {
 		return "No content available"
 	}
 
-	titleStyle := lipgloss.NewStyle().Bold(true).MarginBottom(1)
+	titleStyle := lipgloss.NewStyle().Bold(true)
 	normalStyle := lipgloss.NewStyle()
 	selectedStyle := lipgloss.NewStyle().Background(lipgloss.Color("205")).Foreground(lipgloss.Color("0"))
 
@@ -133,13 +161,22 @@ func (a *ArticleView) View() string {
 	sb.WriteString(titleStyle.Render(a.detail.Title))
 	sb.WriteString("\n\n")
 
-	for i, token := range a.tokens {
-		style := normalStyle
-		if i == a.cursor {
-			style = selectedStyle
+	for _, line := range a.lines {
+		if line.isParaBreak {
+			sb.WriteString("\n")
+			continue
 		}
-		sb.WriteString(style.Render(token.Kana))
-		sb.WriteString(" ")
+		for i := line.startIdx; i <= line.endIdx; i++ {
+			style := normalStyle
+			if i == a.cursor {
+				style = selectedStyle
+			}
+			sb.WriteString(style.Render(a.tokens[i].Kana))
+			if i < line.endIdx {
+				sb.WriteString(" ")
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	return sb.String()

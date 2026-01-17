@@ -1,6 +1,8 @@
 package news
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -171,8 +173,11 @@ func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 
-	listWidth := width / 4
-	contentWidth := width - listWidth - 3
+	listWidth := 30
+	if width > 120 {
+		listWidth = 35
+	}
+	contentWidth := width - listWidth - 1
 
 	m.list.SetSize(listWidth, height-2)
 	m.article.SetSize(contentWidth, height-6)
@@ -180,35 +185,72 @@ func (m *Model) SetSize(width, height int) {
 }
 
 func (m *Model) View() string {
-	listWidth := m.width / 4
-	contentWidth := m.width - listWidth - 3
-
-	listStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderRight(true).
-		Width(listWidth).
-		Height(m.height - 2)
-
-	leftPane := listStyle.Render(m.list.View())
-
-	var rightPane string
-	if m.offline {
-		rightPane = "Cannot connect to news server\nPress 'r' to retry"
-	} else if m.loading {
-		rightPane = "Loading..."
-	} else {
-		articleView := m.article.View()
-		translationView := m.translation.View(m.article.SelectedToken())
-		rightPane = lipgloss.JoinVertical(lipgloss.Left, articleView, translationView)
+	if m.width == 0 {
+		return "Loading..."
 	}
 
-	rightStyle := lipgloss.NewStyle().
-		Width(contentWidth).
-		Height(m.height - 2)
+	listWidth := 30
+	if m.width > 120 {
+		listWidth = 35
+	}
+	contentWidth := m.width - listWidth - 1
 
-	rightPane = rightStyle.Render(rightPane)
+	borderColor := lipgloss.Color("240")
+	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+	listStyle := lipgloss.NewStyle().Width(listWidth)
+	listView := m.list.View()
+	listLines := strings.Split(listStyle.Render(listView), "\n")
+
+	translationHeight := 2
+	articleHeight := m.height - translationHeight - 1
+
+	var rightContent string
+	if m.offline {
+		rightContent = "Cannot connect to news server\nPress 'r' to retry"
+	} else if m.loading {
+		rightContent = "Loading..."
+	} else {
+		rightContent = m.article.View()
+	}
+
+	articleStyle := lipgloss.NewStyle().Width(contentWidth).Height(articleHeight)
+	articleRendered := articleStyle.Render(rightContent)
+	articleLines := strings.Split(articleRendered, "\n")
+
+	separator := borderStyle.Render(strings.Repeat("─", contentWidth))
+
+	translationStyle := lipgloss.NewStyle().Width(contentWidth).Height(translationHeight)
+	translationRendered := translationStyle.Render(m.translation.View(m.article.SelectedToken()))
+	translationLines := strings.Split(translationRendered, "\n")
+
+	var rightLines []string
+	rightLines = append(rightLines, articleLines...)
+	rightLines = append(rightLines, separator)
+	rightLines = append(rightLines, translationLines...)
+
+	var output strings.Builder
+	for i := 0; i < m.height; i++ {
+		left := ""
+		if i < len(listLines) {
+			left = listLines[i]
+		}
+		left = lipgloss.NewStyle().Width(listWidth).Render(left)
+
+		right := ""
+		if i < len(rightLines) {
+			right = rightLines[i]
+		}
+
+		output.WriteString(left)
+		output.WriteString(borderStyle.Render("│"))
+		output.WriteString(right)
+		if i < m.height-1 {
+			output.WriteString("\n")
+		}
+	}
+
+	return output.String()
 }
 
 func (m *Model) Mode() Mode {

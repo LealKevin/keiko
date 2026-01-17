@@ -14,6 +14,7 @@ import (
 	"github.com/LealKevin/keiko/internal/config"
 	"github.com/LealKevin/keiko/internal/data"
 	"github.com/LealKevin/keiko/internal/db"
+	"github.com/LealKevin/keiko/internal/news"
 	"github.com/LealKevin/keiko/internal/service"
 	"github.com/LealKevin/keiko/internal/tui"
 	"github.com/LealKevin/keiko/internal/ui"
@@ -60,28 +61,28 @@ func main() {
 		panic(err)
 	}
 
+	database, err := db.Open(dbFilePath)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	defer database.Close()
+
+	err = database.Migrate()
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
 	flag.Parse()
 	if *tuiMode {
-		runTui(c)
+		runTui(c, database)
 		return
-	}
-
-	db, err := db.Open(dbFilePath)
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-	defer db.Close()
-
-	err = db.Migrate()
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
 	}
 
 	allJLPTLevels := []int{1, 2, 3, 4, 5}
 
-	count, err := db.GetWordsCount(allJLPTLevels)
+	count, err := database.GetWordsCount(allJLPTLevels)
 	if err != nil {
 		panic(err)
 	}
@@ -92,14 +93,14 @@ func main() {
 			panic(err)
 		}
 
-		err = db.SeedVocab(words)
+		err = database.SeedVocab(words)
 		if err != nil {
 			fmt.Println(err)
 			panic(err)
 		}
 	}
 
-	service := service.New(db)
+	service := service.New(database)
 	statusBar := ui.NewStatusBar(service, c)
 	statusBar.Init()
 	statusBar.Refresh()
@@ -139,8 +140,9 @@ func main() {
 	}
 }
 
-func runTui(cfg *config.Config) {
-	tuiModel := tui.New(cfg, *deckSelectorFlag)
+func runTui(cfg *config.Config, database *db.DB) {
+	newsClient := news.NewClient(cfg.UserConfig.NewsServerURL)
+	tuiModel := tui.New(cfg, database, newsClient, *deckSelectorFlag)
 	if _, err := tea.NewProgram(tuiModel, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
