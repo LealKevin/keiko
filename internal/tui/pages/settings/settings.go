@@ -6,10 +6,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LealKevin/keiko/internal/anki"
 	"github.com/LealKevin/keiko/internal/config"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+type settingsView int
+
+const (
+	viewMain settingsView = iota
+	viewDeckSelector
 )
 
 type field int
@@ -32,6 +40,13 @@ type Model struct {
 	visibilityLabels []string
 
 	loopIntervalInput textinput.Model
+
+	currentView       settingsView
+	deckCursor        int
+	availableDecks    []anki.DeckInfo
+	ankiConnected     bool
+	ankiClient        *anki.Client
+	quitOnDeckSelect  bool // true when opened via --deck-selector
 }
 
 func createInput(config *config.Config, field field) textinput.Model {
@@ -48,16 +63,33 @@ func New(config *config.Config, openDeckSelector bool) *Model {
 	loopIntervalInput := createInput(config, fieldLoopInterval)
 	visibilityLabels := []string{"Furigana", "Translation", "JLPT Level"}
 
+	ankiClient := anki.NewClient()
+	ankiConnected := ankiClient.IsConnected()
+
+	var availableDecks []anki.DeckInfo
+	if ankiConnected {
+		decks, err := ankiClient.GetDecksWithStats()
+		if err == nil {
+			availableDecks = decks
+		}
+	}
+
 	m := &Model{
 		config: config,
 		focus:  fieldLoopInterval,
 
 		loopIntervalInput: loopIntervalInput,
 		visibilityLabels:  visibilityLabels,
+
+		ankiClient:       ankiClient,
+		ankiConnected:    ankiConnected,
+		availableDecks:   availableDecks,
+		quitOnDeckSelect: openDeckSelector,
 	}
 
 	if openDeckSelector {
 		m.focus = fieldAnkiDeck
+		m.currentView = viewDeckSelector
 	}
 
 	return m
@@ -78,76 +110,119 @@ func (m *Model) blurSettings() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (*Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q", "esc":
-			return m, m.blurSettings()
-		case "down", "j", "m":
-			m.focus = min(m.focus+1, fieldCount-1)
-		case "up", "k", ",":
-			if m.focus == 0 {
-				return m, m.blurSettings()
-			}
-			m.focus = max(m.focus-1, 0)
-			return m, nil
-		case "right", "l":
-			switch m.focus {
-			case fieldJLPTLevel:
-				if m.jlptCursor == len(JLPTLEVELS)-1 {
-					return m, nil
-				}
-				m.jlptCursor = max(m.jlptCursor+1, 0)
-			case fieldVisibility:
-				if m.visibilityCursor == len(m.visibilityLabels)-1 {
-					return m, nil
-				}
-				m.visibilityCursor = max(m.visibilityCursor+1, 0)
-			}
-			return m, nil
-		case "left", "h":
-			switch m.focus {
-			case fieldJLPTLevel:
-				if m.jlptCursor == 0 {
-					return m, nil
-				}
-				m.jlptCursor = min(m.jlptCursor-1, len(JLPTLEVELS)-1)
-			case fieldVisibility:
-				if m.visibilityCursor == 0 {
-					return m, nil
-				}
-				m.visibilityCursor = min(m.visibilityCursor-1, len(m.visibilityLabels)-1)
-			}
-			return m, nil
-		case " ", "enter":
-			switch m.focus {
-			case fieldJLPTLevel:
-				if slices.Contains(m.config.UserConfig.JLPTLevel, JLPTLEVELS[m.jlptCursor]) {
-					m.config.UserConfig.JLPTLevel = slices.DeleteFunc(m.config.UserConfig.JLPTLevel, func(i int) bool {
-						return i == JLPTLEVELS[m.jlptCursor]
-					})
-					m.config.Save()
-
-					return m, nil
-				} else {
-					m.config.UserConfig.JLPTLevel = append(m.config.UserConfig.JLPTLevel, JLPTLEVELS[m.jlptCursor])
-					m.config.Save()
-					return m, nil
-				}
-			case fieldVisibility:
-				if m.visibilityCursor == 0 {
-					m.config.ToggleFurigana()
-				} else if m.visibilityCursor == 1 {
-					m.config.ToggleTranslation()
-				} else if m.visibilityCursor == 2 {
-					m.config.ToggleJLPTLevel()
-				}
-			}
-			return m, nil
+		if m.currentView == viewDeckSelector {
+			return m.updateDeckSelector(msg)
 		}
-		return m, nil
+		return m.updateMainView(msg)
 	}
 	var cmd tea.Cmd
 	m.loopIntervalInput, cmd = m.loopIntervalInput.Update(msg)
 	return m, cmd
+}
+
+func (m *Model) updateDeckSelector(msg tea.KeyMsg) (*Model, tea.Cmd) {
+	switch keypress := msg.String(); keypress {
+	case "ctrl+c", "q", "esc":
+		if m.quitOnDeckSelect {
+			return m, tea.Quit
+		}
+		m.currentView = viewMain
+		return m, nil
+	case "down", "j":
+		if len(m.availableDecks) > 0 {
+			m.deckCursor = min(m.deckCursor+1, len(m.availableDecks)-1)
+		}
+	case "up", "k":
+		m.deckCursor = max(m.deckCursor-1, 0)
+	case "enter":
+		if len(m.availableDecks) > 0 && m.deckCursor < len(m.availableDecks) {
+			m.config.UserConfig.AnkiDeck = m.availableDecks[m.deckCursor].Name
+			m.config.UserConfig.AnkiModeEnabled = true
+			m.config.Save()
+			if m.quitOnDeckSelect {
+				return m, tea.Quit
+			}
+			m.currentView = viewMain
+		}
+	}
+	return m, nil
+}
+
+func (m *Model) updateMainView(msg tea.KeyMsg) (*Model, tea.Cmd) {
+	switch keypress := msg.String(); keypress {
+	case "ctrl+c", "q", "esc":
+		return m, m.blurSettings()
+	case "down", "j", "m":
+		m.focus = min(m.focus+1, fieldCount-1)
+	case "up", "k", ",":
+		if m.focus == 0 {
+			return m, m.blurSettings()
+		}
+		m.focus = max(m.focus-1, 0)
+		return m, nil
+	case "right", "l":
+		switch m.focus {
+		case fieldJLPTLevel:
+			if m.jlptCursor == len(JLPTLEVELS)-1 {
+				return m, nil
+			}
+			m.jlptCursor = max(m.jlptCursor+1, 0)
+		case fieldVisibility:
+			if m.visibilityCursor == len(m.visibilityLabels)-1 {
+				return m, nil
+			}
+			m.visibilityCursor = max(m.visibilityCursor+1, 0)
+		}
+		return m, nil
+	case "left", "h":
+		switch m.focus {
+		case fieldJLPTLevel:
+			if m.jlptCursor == 0 {
+				return m, nil
+			}
+			m.jlptCursor = min(m.jlptCursor-1, len(JLPTLEVELS)-1)
+		case fieldVisibility:
+			if m.visibilityCursor == 0 {
+				return m, nil
+			}
+			m.visibilityCursor = min(m.visibilityCursor-1, len(m.visibilityLabels)-1)
+		}
+		return m, nil
+	case " ", "enter":
+		switch m.focus {
+		case fieldJLPTLevel:
+			if slices.Contains(m.config.UserConfig.JLPTLevel, JLPTLEVELS[m.jlptCursor]) {
+				m.config.UserConfig.JLPTLevel = slices.DeleteFunc(m.config.UserConfig.JLPTLevel, func(i int) bool {
+					return i == JLPTLEVELS[m.jlptCursor]
+				})
+				m.config.Save()
+				return m, nil
+			} else {
+				m.config.UserConfig.JLPTLevel = append(m.config.UserConfig.JLPTLevel, JLPTLEVELS[m.jlptCursor])
+				m.config.Save()
+				return m, nil
+			}
+		case fieldVisibility:
+			if m.visibilityCursor == 0 {
+				m.config.ToggleFurigana()
+			} else if m.visibilityCursor == 1 {
+				m.config.ToggleTranslation()
+			} else if m.visibilityCursor == 2 {
+				m.config.ToggleJLPTLevel()
+			}
+		case fieldAnkiDeck:
+			m.currentView = viewDeckSelector
+			m.deckCursor = 0
+			for i, d := range m.availableDecks {
+				if d.Name == m.config.UserConfig.AnkiDeck {
+					m.deckCursor = i
+					break
+				}
+			}
+		}
+		return m, nil
+	}
+	return m, nil
 }
 
 var (
@@ -169,6 +244,13 @@ var (
 )
 
 func (m *Model) View(focused bool) string {
+	if m.currentView == viewDeckSelector {
+		return m.renderDeckSelector()
+	}
+	return m.renderMainView(focused)
+}
+
+func (m *Model) renderMainView(focused bool) string {
 	var doc strings.Builder
 
 	interval := lipgloss.JoinHorizontal(lipgloss.Center, []string{
@@ -186,11 +268,102 @@ func (m *Model) View(focused bool) string {
 		m.renderVisibilityField(focused),
 	}...)
 
+	ankiDeck := lipgloss.JoinHorizontal(lipgloss.Center, []string{
+		m.renderField("Anki Deck: ", focused && m.focus == fieldAnkiDeck),
+		m.renderAnkiDeckField(focused),
+	}...)
+
 	doc.WriteString(interval)
 	doc.WriteString("\n")
 	doc.WriteString(jlpt)
 	doc.WriteString("\n")
 	doc.WriteString(visibility)
+	doc.WriteString("\n")
+	doc.WriteString(ankiDeck)
+
+	return doc.String()
+}
+
+func (m *Model) renderAnkiDeckField(focused bool) string {
+	var display string
+	if !m.ankiConnected {
+		display = "(Anki not connected)"
+	} else if m.config.UserConfig.AnkiDeck == "" {
+		display = "(none selected) Press Enter to choose"
+	} else {
+		dueCount := 0
+		for _, d := range m.availableDecks {
+			if d.Name == m.config.UserConfig.AnkiDeck {
+				dueCount = d.DueCount
+				break
+			}
+		}
+		display = fmt.Sprintf("%s (%d due) Press Enter to change", m.config.UserConfig.AnkiDeck, dueCount)
+	}
+
+	if focused && m.focus == fieldAnkiDeck {
+		return activeField.Render(display)
+	}
+	return inactiveField.Render(display)
+}
+
+func (m *Model) renderDeckSelector() string {
+	var doc strings.Builder
+
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205"))
+	doc.WriteString(titleStyle.Render("Select Anki Deck"))
+	doc.WriteString("\n\n")
+
+	if !m.ankiConnected {
+		doc.WriteString(inactiveField.Render("Anki not connected. Please open Anki Desktop."))
+		doc.WriteString("\n\n")
+		doc.WriteString(inactiveField.Render("Press Esc to go back"))
+		return doc.String()
+	}
+
+	if len(m.availableDecks) == 0 {
+		doc.WriteString(inactiveField.Render("No decks found in Anki."))
+		doc.WriteString("\n\n")
+		doc.WriteString(inactiveField.Render("Press Esc to go back"))
+		return doc.String()
+	}
+
+	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
+	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	unselectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
+	for i, deck := range m.availableDecks {
+		isCurrentDeck := deck.Name == m.config.UserConfig.AnkiDeck
+		isCursor := i == m.deckCursor
+
+		var prefix string
+		if isCursor {
+			prefix = "> "
+		} else {
+			prefix = "  "
+		}
+
+		var radio string
+		if isCurrentDeck {
+			radio = "(●) "
+		} else {
+			radio = "( ) "
+		}
+
+		line := fmt.Sprintf("%s%s%-30s %d due", prefix, radio, deck.Name, deck.DueCount)
+
+		if isCursor {
+			doc.WriteString(cursorStyle.Render(line))
+		} else if isCurrentDeck {
+			doc.WriteString(selectedStyle.Render(line))
+		} else {
+			doc.WriteString(unselectedStyle.Render(line))
+		}
+		doc.WriteString("\n")
+	}
+
+	doc.WriteString("\n")
+	doc.WriteString(inactiveField.Render("↑↓ navigate  Enter select  Esc cancel"))
 
 	return doc.String()
 }
