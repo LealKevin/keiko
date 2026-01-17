@@ -332,6 +332,8 @@ func (m *Model) renderDeckSelector() string {
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 	unselectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
+	const maxDeckNameLen = 35
+
 	for i, deck := range m.availableDecks {
 		isCurrentDeck := deck.Name == m.config.UserConfig.AnkiDeck
 		isCursor := i == m.deckCursor
@@ -350,7 +352,8 @@ func (m *Model) renderDeckSelector() string {
 			radio = "( ) "
 		}
 
-		line := fmt.Sprintf("%s%s%-30s %d due", prefix, radio, deck.Name, deck.DueCount)
+		deckName := truncateAndPad(deck.Name, maxDeckNameLen)
+		line := fmt.Sprintf("%s%s%s %3d due", prefix, radio, deckName, deck.DueCount)
 
 		if isCursor {
 			doc.WriteString(cursorStyle.Render(line))
@@ -435,4 +438,44 @@ func (m *Model) displayIntervalFormat(seconds int) string {
 	var doc strings.Builder
 	doc.WriteString(fmt.Sprintf("%02d:%02d", seconds/60, seconds%60))
 	return doc.String()
+}
+
+func truncateAndPad(s string, width int) string {
+	var result []rune
+	currentWidth := 0
+
+	for _, r := range s {
+		w := runeWidth(r)
+		if currentWidth+w > width-2 {
+			result = append(result, '.', '.')
+			currentWidth += 2
+			break
+		}
+		result = append(result, r)
+		currentWidth += w
+	}
+
+	for currentWidth < width {
+		result = append(result, ' ')
+		currentWidth++
+	}
+
+	return string(result)
+}
+
+func runeWidth(r rune) int {
+	if r >= 0x1100 &&
+		(r <= 0x115F || r == 0x2329 || r == 0x232A ||
+			(r >= 0x2E80 && r <= 0xA4CF && r != 0x303F) ||
+			(r >= 0xAC00 && r <= 0xD7A3) ||
+			(r >= 0xF900 && r <= 0xFAFF) ||
+			(r >= 0xFE10 && r <= 0xFE19) ||
+			(r >= 0xFE30 && r <= 0xFE6F) ||
+			(r >= 0xFF00 && r <= 0xFF60) ||
+			(r >= 0xFFE0 && r <= 0xFFE6) ||
+			(r >= 0x20000 && r <= 0x2FFFD) ||
+			(r >= 0x30000 && r <= 0x3FFFD)) {
+		return 2
+	}
+	return 1
 }
