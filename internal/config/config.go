@@ -20,6 +20,8 @@ type UserConfig struct {
 
 	AnkiDeck        string `mapstructure:"anki_deck" yaml:"anki_deck"`
 	AnkiModeEnabled bool   `mapstructure:"anki_mode_enabled" yaml:"anki_mode_enabled"`
+
+	NewsServerURL string `mapstructure:"news_server_url" yaml:"news_server_url"`
 }
 
 type Config struct {
@@ -53,6 +55,7 @@ func (c *Config) Init() error {
 	c.Viper.SetDefault("is_translation_visible", true)
 	c.Viper.SetDefault("anki_deck", "")
 	c.Viper.SetDefault("anki_mode_enabled", false)
+	c.Viper.SetDefault("news_server_url", "http://localhost:8080")
 
 	err := c.Viper.ReadInConfig()
 	if err != nil {
