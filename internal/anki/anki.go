@@ -28,8 +28,9 @@ type DeckInfo struct {
 type CardInfo struct {
 	CardID   int64
 	DeckName string
-	Question string
-	Answer   string
+	Question string // Word/front
+	Reading  string // Furigana/reading
+	Answer   string // Meaning/back
 }
 
 func NewClient() *Client {
@@ -157,8 +158,10 @@ func (c *Client) GetCardInfo(cardID int64) (*CardInfo, error) {
 	var cards []struct {
 		CardID   int64  `json:"cardId"`
 		DeckName string `json:"deckName"`
-		Question string `json:"question"`
-		Answer   string `json:"answer"`
+		Fields   map[string]struct {
+			Value string `json:"value"`
+			Order int    `json:"order"`
+		} `json:"fields"`
 	}
 	if err := json.Unmarshal(result, &cards); err != nil {
 		return nil, err
@@ -169,12 +172,81 @@ func (c *Client) GetCardInfo(cardID int64) (*CardInfo, error) {
 	}
 
 	card := cards[0]
+	question, reading, answer := extractCardFields(card.Fields)
+
 	return &CardInfo{
 		CardID:   card.CardID,
 		DeckName: card.DeckName,
-		Question: StripHTML(card.Question),
-		Answer:   StripHTML(card.Answer),
+		Question: StripHTML(question),
+		Reading:  StripHTML(reading),
+		Answer:   StripHTML(answer),
 	}, nil
+}
+
+func extractCardFields(fields map[string]struct {
+	Value string `json:"value"`
+	Order int    `json:"order"`
+}) (question, reading, answer string) {
+	// Common field names for question (front)
+	questionKeys := []string{"Word", "Front", "Expression", "Vocabulary", "Kanji", "Question"}
+	// Common field names for reading (furigana)
+	readingKeys := []string{"Word Reading", "Reading", "Kana", "Furigana", "Hiragana"}
+	// Common field names for answer (meaning)
+	answerKeys := []string{"Word Meaning", "Meaning", "Back", "Definition", "English", "Answer", "Translation"}
+
+	// Try to find question field
+	for _, key := range questionKeys {
+		if f, ok := fields[key]; ok && f.Value != "" {
+			question = f.Value
+			break
+		}
+	}
+
+	// Try to find reading field
+	for _, key := range readingKeys {
+		if f, ok := fields[key]; ok && f.Value != "" {
+			reading = f.Value
+			break
+		}
+	}
+
+	// Try to find answer field
+	for _, key := range answerKeys {
+		if f, ok := fields[key]; ok && f.Value != "" {
+			answer = f.Value
+			break
+		}
+	}
+
+	// Fallback: use fields by order if not found
+	if question == "" || answer == "" {
+		type orderedField struct {
+			name  string
+			value string
+			order int
+		}
+		var ordered []orderedField
+		for name, f := range fields {
+			ordered = append(ordered, orderedField{name, f.Value, f.Order})
+		}
+		// Sort by order
+		for i := 0; i < len(ordered)-1; i++ {
+			for j := i + 1; j < len(ordered); j++ {
+				if ordered[j].order < ordered[i].order {
+					ordered[i], ordered[j] = ordered[j], ordered[i]
+				}
+			}
+		}
+
+		if question == "" && len(ordered) > 0 {
+			question = ordered[0].value
+		}
+		if answer == "" && len(ordered) > 1 {
+			answer = ordered[1].value
+		}
+	}
+
+	return question, reading, answer
 }
 
 func (c *Client) AnswerCard(cardID int64, ease int) error {

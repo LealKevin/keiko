@@ -120,30 +120,44 @@ func (s *StatusBar) redrawVocab() error {
 }
 
 func (s *StatusBar) redrawAnki() error {
-	var text string
+	var left, center, right string
 
 	switch s.ankiState {
 	case StateNoDeck:
-		text = "[Anki: no deck] Select deck in settings (F2)"
+		left = "[Anki: no deck]"
+		center = "Select deck in settings (F2)"
 	case StateDisconnected:
-		text = "[Anki: disconnected] Open Anki Desktop"
+		left = "[Anki: disconnected]"
+		center = "Open Anki Desktop"
 	case StateDone:
-		text = fmt.Sprintf("%s All caught up!", s.formatPrefix())
+		left = s.formatPrefix()
+		center = "All caught up!"
 	case StateQuestion:
 		if s.currentCard == nil {
-			text = "[Anki: loading...]"
+			center = "[Anki: loading...]"
 		} else {
-			text = fmt.Sprintf("%s %s → [F4]", s.formatPrefix(), truncateRunes(s.currentCard.Question, 40))
+			left = s.formatPrefix()
+			center = truncateRunes(s.currentCard.Question, 40)
+			right = "[F4]"
 		}
 	case StateAnswer:
 		if s.currentCard == nil {
-			text = "[Anki: loading...]"
+			center = "[Anki: loading...]"
 		} else {
-			text = fmt.Sprintf("%s %s - %s → [F5 ✓ | F6 ✗]", s.formatPrefix(), truncateRunes(s.currentCard.Question, 25), truncateRunes(s.currentCard.Answer, 25))
+			left = s.formatPrefix()
+			// Show word with reading and meaning
+			wordWithReading := s.currentCard.Question
+			if s.currentCard.Reading != "" {
+				wordWithReading = fmt.Sprintf("%s【%s】", s.currentCard.Question, s.currentCard.Reading)
+			}
+			center = fmt.Sprintf("%s - %s", truncateRunes(wordWithReading, 30), truncateRunes(s.currentCard.Answer, 25))
+			right = "[F5 ✗ | F6 ✓]"
 		}
 	}
 
-	content := fmt.Sprintf("#[fill=%s bg=%s,fg=%s,align=%s] %s", fillColor, bgColor, fgColor, align, text)
+	// Build tmux format with left/center/right alignment
+	content := fmt.Sprintf("#[fill=%s,bg=%s,fg=%s]#[align=left] %s #[align=centre]%s#[align=right]%s ",
+		fillColor, bgColor, fgColor, left, center, right)
 	s.Update(content)
 	return nil
 }

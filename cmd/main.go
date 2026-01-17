@@ -26,8 +26,8 @@ const (
 	KeyF2 = 0x003C // Settings
 	KeyF3 = 0x003D // Toggle mode
 	KeyF4 = 0x003E // Reveal answer
-	KeyF5 = 0x003F // Good (ease 3)
-	KeyF6 = 0x0040 // Again (ease 1)
+	KeyF5 = 0x003F // Again (ease 1)
+	KeyF6 = 0x0040 // Good (ease 3)
 )
 
 var (
@@ -190,9 +190,9 @@ func keyboardListener(statusBar *ui.StatusBar, cfg *config.Config) {
 		case KeyF4:
 			statusBar.RevealAnswer()
 		case KeyF5:
-			statusBar.AnswerCard(3) // Good
-		case KeyF6:
 			statusBar.AnswerCard(1) // Again
+		case KeyF6:
+			statusBar.AnswerCard(3) // Good
 		}
 	}
 }
