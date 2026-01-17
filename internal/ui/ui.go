@@ -218,7 +218,13 @@ func (s *StatusBar) fetchAnkiCards() {
 	}
 
 	s.dueCards = cards
-	s.dueCount = len(cards)
+
+	dueCount, err := s.ankiClient.GetDueCount(s.cfg.UserConfig.AnkiDeck)
+	if err != nil {
+		s.dueCount = len(cards)
+	} else {
+		s.dueCount = dueCount
+	}
 
 	if len(cards) == 0 {
 		s.ankiState = StateDone
@@ -302,8 +308,8 @@ func (s *StatusBar) AnswerCard(ease int) {
 		return
 	}
 
-	if ease >= 3 {
-		s.dueCount--
+	if count, err := s.ankiClient.GetDueCount(s.cfg.UserConfig.AnkiDeck); err == nil {
+		s.dueCount = count
 	}
 	s.fetchNextCard()
 	s.Redraw()
