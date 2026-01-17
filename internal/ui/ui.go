@@ -237,6 +237,10 @@ func (s *StatusBar) fetchAnkiCards() {
 
 func (s *StatusBar) fetchNextCard() {
 	if len(s.dueCards) == 0 {
+		if s.dueCount > 0 {
+			s.fetchAnkiCards()
+			return
+		}
 		s.ankiState = StateDone
 		s.currentCard = nil
 		return
