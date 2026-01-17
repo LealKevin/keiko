@@ -17,6 +17,9 @@ type UserConfig struct {
 	IsFuriganaVisible    bool `mapstructure:"is_furigana_visible" yaml:"is_furigana_visible"`
 	IsJLPTLevelVisible   bool `mapstructure:"is_jlpt_level_visible" yaml:"is_jlpt_level_visible"`
 	IsTranslationVisible bool `mapstructure:"is_translation_visible" yaml:"is_translation_visible"`
+
+	AnkiDeck        string `mapstructure:"anki_deck" yaml:"anki_deck"`
+	AnkiModeEnabled bool   `mapstructure:"anki_mode_enabled" yaml:"anki_mode_enabled"`
 }
 
 type Config struct {
@@ -48,6 +51,8 @@ func (c *Config) Init() error {
 	c.Viper.SetDefault("is_furigana_visible", true)
 	c.Viper.SetDefault("is_jlpt_level_visible", true)
 	c.Viper.SetDefault("is_translation_visible", true)
+	c.Viper.SetDefault("anki_deck", "")
+	c.Viper.SetDefault("anki_mode_enabled", false)
 
 	err := c.Viper.ReadInConfig()
 	if err != nil {
