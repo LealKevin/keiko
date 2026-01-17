@@ -97,7 +97,7 @@ func (c *Client) GetDecksWithStats() ([]DeckInfo, error) {
 
 	var decks []DeckInfo
 	for name := range deckMap {
-		dueCount, err := c.getDueCount(name)
+		dueCount, err := c.GetDueCount(name)
 		if err != nil {
 			dueCount = 0
 		}
@@ -107,7 +107,7 @@ func (c *Client) GetDecksWithStats() ([]DeckInfo, error) {
 	return decks, nil
 }
 
-func (c *Client) getDueCount(deck string) (int, error) {
+func (c *Client) GetDueCount(deck string) (int, error) {
 	result, err := c.call("getDeckStats", map[string]interface{}{
 		"decks": []string{deck},
 	})
