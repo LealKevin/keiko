@@ -38,6 +38,16 @@ func (db *DB) Migrate() error {
 					seen INTEGER DEFAULT 0
 	    	)
 	`)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS news_read (
+			nhk_id TEXT PRIMARY KEY,
+			read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
 	return err
 }
 
@@ -166,4 +176,33 @@ func (db *DB) GetWordsCount(levels []int) (int, error) {
 		return 0, fmt.Errorf("error getting words count: %s", err)
 	}
 	return count, nil
+}
+
+func (db *DB) MarkNewsAsRead(nhkID string) error {
+	_, err := db.Exec(`INSERT OR IGNORE INTO news_read (nhk_id) VALUES (?)`, nhkID)
+	return err
+}
+
+func (db *DB) IsNewsRead(nhkID string) (bool, error) {
+	var count int
+	err := db.QueryRow(`SELECT COUNT(*) FROM news_read WHERE nhk_id = ?`, nhkID).Scan(&count)
+	return count > 0, err
+}
+
+func (db *DB) GetReadNewsIDs() (map[string]bool, error) {
+	rows, err := db.Query(`SELECT nhk_id FROM news_read`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result[id] = true
+	}
+	return result, rows.Err()
 }
