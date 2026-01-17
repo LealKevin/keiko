@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LealKevin/keiko/internal/anki"
 	"github.com/LealKevin/keiko/internal/config"
 	"github.com/LealKevin/keiko/internal/data"
 	"github.com/LealKevin/keiko/internal/db"
@@ -21,7 +22,18 @@ import (
 	hook "github.com/robotn/gohook"
 )
 
-var tuiMode = flag.Bool("tui", false, "Run in TUI mode")
+const (
+	KeyF2 = 0x003C // Settings
+	KeyF3 = 0x003D // Toggle mode
+	KeyF4 = 0x003E // Reveal answer
+	KeyF5 = 0x003F // Good (ease 3)
+	KeyF6 = 0x0040 // Again (ease 1)
+)
+
+var (
+	tuiMode          = flag.Bool("tui", false, "Run in TUI mode")
+	deckSelectorFlag = flag.Bool("deck-selector", false, "Open directly to deck selector")
+)
 
 func main() {
 	configDir, _ := os.UserConfigDir()
@@ -99,17 +111,26 @@ func main() {
 
 	c.Watch()
 
-	go keyboardListener()
+	go keyboardListener(statusBar, c)
+
+	// Background polling for Anki due count refresh
+	go func() {
+		for range time.Tick(anki.RefreshInterval) {
+			statusBar.RefreshAnkiDueCount()
+		}
+	}()
 
 	ticker := time.NewTicker(time.Second * time.Duration(c.UserConfig.LoopInterval))
 	for {
 		select {
 		case <-ticker.C:
-			statusBar.Refresh()
+			if statusBar.Mode() == ui.VocabMode {
+				statusBar.Refresh()
+			}
 			ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
 		case <-c.Updated:
 			ticker.Reset(time.Second * time.Duration(c.UserConfig.LoopInterval))
-			statusBar.Redraw()
+			statusBar.OnConfigChange()
 		case <-sigChan:
 			fmt.Println("Exiting...")
 			statusBar.Close()
@@ -118,8 +139,8 @@ func main() {
 	}
 }
 
-func runTui(config *config.Config) {
-	tuiModel := tui.New(config)
+func runTui(cfg *config.Config) {
+	tuiModel := tui.New(cfg, *deckSelectorFlag)
 	if _, err := tea.NewProgram(tuiModel, tea.WithAltScreen()).Run(); err != nil {
 		fmt.Println("Error running program:", err)
 		os.Exit(1)
@@ -137,13 +158,41 @@ func openTui() {
 	}
 }
 
-func keyboardListener() {
+func openDeckSelector() {
+	path, err := os.Executable()
+	if err != nil {
+		fmt.Println("Error getting executable path:", err)
+		return
+	}
+	if err := exec.Command("tmux", "display-popup", "-w", "80%", "-h", "80%", "-E", path, "--tui", "--deck-selector").Run(); err != nil {
+		fmt.Printf("tmux popup failed: %v\n", err)
+	}
+}
+
+func keyboardListener(statusBar *ui.StatusBar, cfg *config.Config) {
 	evChan := hook.Start()
 	defer hook.End()
 
 	for ev := range evChan {
-		if ev.Kind == hook.KeyDown && ev.Rawcode == 120 {
+		if ev.Kind != hook.KeyDown {
+			continue
+		}
+
+		switch ev.Keycode {
+		case KeyF2:
 			openTui()
+		case KeyF3:
+			if statusBar.NeedsDeckSelector() {
+				openDeckSelector()
+			} else {
+				statusBar.ToggleMode()
+			}
+		case KeyF4:
+			statusBar.RevealAnswer()
+		case KeyF5:
+			statusBar.AnswerCard(3) // Good
+		case KeyF6:
+			statusBar.AnswerCard(1) // Again
 		}
 	}
 }

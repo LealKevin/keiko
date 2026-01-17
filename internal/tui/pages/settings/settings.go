@@ -18,6 +18,7 @@ const (
 	fieldLoopInterval field = iota
 	fieldJLPTLevel
 	fieldVisibility
+	fieldAnkiDeck
 	fieldCount
 )
 
@@ -43,17 +44,23 @@ func createInput(config *config.Config, field field) textinput.Model {
 	return ti
 }
 
-func New(config *config.Config) *Model {
+func New(config *config.Config, openDeckSelector bool) *Model {
 	loopIntervalInput := createInput(config, fieldLoopInterval)
 	visibilityLabels := []string{"Furigana", "Translation", "JLPT Level"}
 
-	return &Model{
+	m := &Model{
 		config: config,
 		focus:  fieldLoopInterval,
 
 		loopIntervalInput: loopIntervalInput,
 		visibilityLabels:  visibilityLabels,
 	}
+
+	if openDeckSelector {
+		m.focus = fieldAnkiDeck
+	}
+
+	return m
 }
 
 func (m *Model) Init() tea.Cmd {

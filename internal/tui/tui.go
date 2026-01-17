@@ -33,18 +33,25 @@ type model struct {
 	height int
 }
 
-func New(config *config.Config) *model {
-	settings := settings.New(config)
+func New(config *config.Config, openDeckSelector bool) *model {
+	settingsModel := settings.New(config, openDeckSelector)
 
-	return &model{
+	m := &model{
 		Tabs:       []string{"Home", "Settings"},
 		TabContent: []string{"HomeTab", "SettingsTab"},
 		focus:      focusTabs,
 
-		settings: settings,
+		settings: settingsModel,
 
 		config: config,
 	}
+
+	if openDeckSelector {
+		m.activeTab = 1
+		m.focus = focusContainer
+	}
+
+	return m
 }
 
 func (m model) Init() tea.Cmd {

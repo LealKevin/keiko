@@ -28,7 +28,7 @@ const (
 	StateNoDeck
 )
 
-type statusBar struct {
+type StatusBar struct {
 	svc         service.VocabService
 	cfg         *config.Config
 	currentWord *data.Word
@@ -48,8 +48,8 @@ type StatusBarUI interface {
 	Close()
 }
 
-func NewStatusBar(svc service.VocabService, cfg *config.Config) *statusBar {
-	sb := &statusBar{
+func NewStatusBar(svc service.VocabService, cfg *config.Config) *StatusBar {
+	sb := &StatusBar{
 		svc:        svc,
 		cfg:        cfg,
 		ankiClient: anki.NewClient(),
@@ -69,7 +69,7 @@ func NewStatusBar(svc service.VocabService, cfg *config.Config) *statusBar {
 	return sb
 }
 
-func (s *statusBar) Init() {
+func (s *StatusBar) Init() {
 	if err := exec.Command("tmux", "set", "-g", "status", "2").Run(); err != nil {
 		log.Printf("tmux status set failed: %v", err)
 	}
@@ -85,14 +85,14 @@ const (
 	align     = "centre"
 )
 
-func (s *statusBar) Redraw() error {
+func (s *StatusBar) Redraw() error {
 	if s.mode == AnkiMode {
 		return s.redrawAnki()
 	}
 	return s.redrawVocab()
 }
 
-func (s *statusBar) redrawVocab() error {
+func (s *StatusBar) redrawVocab() error {
 	if s.currentWord == nil {
 		return nil
 	}
@@ -119,7 +119,7 @@ func (s *statusBar) redrawVocab() error {
 	return nil
 }
 
-func (s *statusBar) redrawAnki() error {
+func (s *StatusBar) redrawAnki() error {
 	var text string
 
 	switch s.ankiState {
@@ -148,7 +148,7 @@ func (s *statusBar) redrawAnki() error {
 	return nil
 }
 
-func (s *statusBar) Refresh() error {
+func (s *StatusBar) Refresh() error {
 	levels := s.cfg.UserConfig.JLPTLevel
 	word, err := s.svc.GetNextWord(levels)
 	if err != nil {
@@ -159,13 +159,13 @@ func (s *statusBar) Refresh() error {
 	return s.Redraw()
 }
 
-func (s *statusBar) Update(content string) {
+func (s *StatusBar) Update(content string) {
 	if err := exec.Command("tmux", "set", "-g", "status-format[1]", content).Run(); err != nil {
 		log.Printf("tmux update failed: %v", err)
 	}
 }
 
-func (s *statusBar) Close() {
+func (s *StatusBar) Close() {
 	if err := exec.Command("tmux", "set", "-g", "status", "1").Run(); err != nil {
 		log.Printf("tmux close status set failed: %v", err)
 	}
@@ -186,7 +186,7 @@ func truncateRunes(s string, maxRunes int) string {
 	return s
 }
 
-func (s *statusBar) formatPrefix() string {
+func (s *StatusBar) formatPrefix() string {
 	deckName := s.cfg.UserConfig.AnkiDeck
 	maxDeckLen := 15
 	runes := []rune(deckName)
@@ -196,7 +196,7 @@ func (s *statusBar) formatPrefix() string {
 	return fmt.Sprintf("[%s: %d due]", deckName, s.dueCount)
 }
 
-func (s *statusBar) fetchAnkiCards() {
+func (s *StatusBar) fetchAnkiCards() {
 	cards, err := s.ankiClient.GetDueCards(s.cfg.UserConfig.AnkiDeck)
 	if err != nil {
 		s.ankiState = StateDisconnected
@@ -215,7 +215,7 @@ func (s *statusBar) fetchAnkiCards() {
 	s.fetchNextCard()
 }
 
-func (s *statusBar) fetchNextCard() {
+func (s *StatusBar) fetchNextCard() {
 	if len(s.dueCards) == 0 {
 		s.ankiState = StateDone
 		s.currentCard = nil
@@ -235,15 +235,15 @@ func (s *statusBar) fetchNextCard() {
 	s.ankiState = StateQuestion
 }
 
-func (s *statusBar) Mode() Mode {
+func (s *StatusBar) Mode() Mode {
 	return s.mode
 }
 
-func (s *statusBar) AnkiState() AnkiState {
+func (s *StatusBar) AnkiState() AnkiState {
 	return s.ankiState
 }
 
-func (s *statusBar) ToggleMode() {
+func (s *StatusBar) ToggleMode() {
 	if s.cfg.UserConfig.AnkiDeck == "" {
 		return
 	}
@@ -264,11 +264,11 @@ func (s *statusBar) ToggleMode() {
 	s.Redraw()
 }
 
-func (s *statusBar) NeedsDeckSelector() bool {
+func (s *StatusBar) NeedsDeckSelector() bool {
 	return s.cfg.UserConfig.AnkiDeck == ""
 }
 
-func (s *statusBar) RevealAnswer() {
+func (s *StatusBar) RevealAnswer() {
 	if s.mode != AnkiMode || s.ankiState != StateQuestion {
 		return
 	}
@@ -276,7 +276,7 @@ func (s *statusBar) RevealAnswer() {
 	s.Redraw()
 }
 
-func (s *statusBar) AnswerCard(ease int) {
+func (s *StatusBar) AnswerCard(ease int) {
 	if s.mode != AnkiMode || s.ankiState != StateAnswer || s.currentCard == nil {
 		return
 	}
@@ -293,7 +293,7 @@ func (s *statusBar) AnswerCard(ease int) {
 	s.Redraw()
 }
 
-func (s *statusBar) RefreshAnkiDueCount() {
+func (s *StatusBar) RefreshAnkiDueCount() {
 	if s.mode != AnkiMode || s.ankiState == StateDisconnected {
 		return
 	}
@@ -307,13 +307,13 @@ func (s *statusBar) RefreshAnkiDueCount() {
 	s.dueCount = count
 }
 
-func (s *statusBar) OnConfigChange() {
+func (s *StatusBar) OnConfigChange() {
 	if s.mode == AnkiMode && s.cfg.UserConfig.AnkiDeck != "" {
 		s.fetchAnkiCards()
 	}
 	s.Redraw()
 }
 
-func (s *statusBar) AnkiClient() *anki.Client {
+func (s *StatusBar) AnkiClient() *anki.Client {
 	return s.ankiClient
 }
