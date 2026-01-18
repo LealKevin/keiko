@@ -132,19 +132,54 @@ func (c *Client) GetDueCount(deck string) (int, error) {
 }
 
 func (c *Client) GetDueCards(deck string) ([]int64, error) {
-	result, err := c.call("findCards", map[string]interface{}{
+	statsResult, err := c.call("getDeckStats", map[string]interface{}{
+		"decks": []string{deck},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var stats map[string]struct {
+		NewCount int `json:"new_count"`
+	}
+	if err := json.Unmarshal(statsResult, &stats); err != nil {
+		return nil, err
+	}
+
+	var newLimit int
+	for _, s := range stats {
+		newLimit = s.NewCount
+		break
+	}
+
+	dueResult, err := c.call("findCards", map[string]interface{}{
 		"query": fmt.Sprintf("deck:\"%s\" is:due", deck),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	var cardIDs []int64
-	if err := json.Unmarshal(result, &cardIDs); err != nil {
+	var dueCards []int64
+	if err := json.Unmarshal(dueResult, &dueCards); err != nil {
 		return nil, err
 	}
 
-	return cardIDs, nil
+	if newLimit > 0 {
+		newResult, err := c.call("findCards", map[string]interface{}{
+			"query": fmt.Sprintf("deck:\"%s\" is:new", deck),
+		})
+		if err == nil {
+			var newCards []int64
+			if err := json.Unmarshal(newResult, &newCards); err == nil {
+				if len(newCards) > newLimit {
+					newCards = newCards[:newLimit]
+				}
+				dueCards = append(dueCards, newCards...)
+			}
+		}
+	}
+
+	return dueCards, nil
 }
 
 func (c *Client) GetCardInfo(cardID int64) (*CardInfo, error) {

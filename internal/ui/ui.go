@@ -312,10 +312,7 @@ func (s *StatusBar) AnswerCard(ease int) {
 		return
 	}
 
-	if count, err := s.ankiClient.GetDueCount(s.cfg.UserConfig.AnkiDeck); err == nil {
-		s.dueCount = count
-	}
-	s.fetchNextCard()
+	s.fetchAnkiCards()
 	s.Redraw()
 }
 
