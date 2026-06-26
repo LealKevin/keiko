@@ -2,6 +2,7 @@ package scraper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -18,6 +19,12 @@ import (
 type Scraper struct {
 	store     *store.Store
 	tokenizer *ai.Tokenizer
+}
+
+type ProcessingError struct {
+	NhkID  string
+	Reason string
+	Err    error
 }
 
 func New(store *store.Store, tokenizer *ai.Tokenizer) *Scraper {
@@ -44,36 +51,129 @@ func (s *Scraper) FetchAndProcess(ctx context.Context) error {
 		}
 	}()
 
-	newCount := 0
+	var (
+		successCount     int
+		skippedExisting  int
+		skippedMaxRetry  int
+		errors           []ProcessingError
+		rateLimited      bool
+	)
+
 	for _, nhkID := range newsIDs {
 		exists, err := s.store.NewsExists(ctx, nhkID)
 		if err != nil {
-			log.Printf("Error checking if news exists: %v", err)
+			errors = append(errors, ProcessingError{
+				NhkID:  nhkID,
+				Reason: "db_check",
+				Err:    err,
+			})
 			continue
 		}
 
 		if exists {
-			log.Printf("Skipping %s (already exists)", nhkID)
+			skippedExisting++
+			continue
+		}
+
+		shouldSkip, failure, err := s.store.ShouldSkipArticle(ctx, nhkID)
+		if err != nil {
+			log.Printf("Error checking failure status for %s: %v", nhkID, err)
+		}
+		if shouldSkip {
+			skippedMaxRetry++
+			log.Printf("Skipping %s (failed %d times, last error: %s)", nhkID, failure.Attempts, failure.ErrorType)
 			continue
 		}
 
 		if err := s.processArticle(ctx, browser, nhkID); err != nil {
-			log.Printf("Error processing %s: %v", nhkID, err)
+			reason := classifyError(err)
+			errors = append(errors, ProcessingError{
+				NhkID:  nhkID,
+				Reason: reason,
+				Err:    err,
+			})
+			log.Printf("Failed %s [%s]: %v", nhkID, reason, err)
+
+			if recErr := s.store.RecordFailure(ctx, nhkID, reason, err.Error()); recErr != nil {
+				log.Printf("Error recording failure: %v", recErr)
+			}
+
 			if isRateLimitError(err) {
-				log.Println("Rate limit reached, stopping for now. Will retry next run.")
+				rateLimited = true
+				log.Println("Rate limit reached, stopping processing")
 				break
 			}
 			continue
 		}
 
-		newCount++
+		s.store.ClearFailure(ctx, nhkID)
+		successCount++
 		log.Printf("Processed %s", nhkID)
-
 		time.Sleep(2 * time.Second)
 	}
 
-	log.Printf("Finished: processed %d new articles", newCount)
+	s.printSummary(len(newsIDs), successCount, skippedExisting, skippedMaxRetry, errors, rateLimited)
 	return nil
+}
+
+func (s *Scraper) printSummary(total, success, skippedExisting, skippedMaxRetry int, errors []ProcessingError, rateLimited bool) {
+	log.Println("")
+	log.Println("=== Processing Summary ===")
+	log.Printf("Total found:     %d", total)
+	log.Printf("Already in DB:   %d", skippedExisting)
+	log.Printf("Max retries:     %d (skipped)", skippedMaxRetry)
+	log.Printf("Succeeded:       %d", success)
+	log.Printf("Failed:          %d", len(errors))
+
+	if rateLimited {
+		log.Printf("Status:          Stopped (rate limit reached)")
+	} else {
+		log.Printf("Status:          Completed")
+	}
+
+	if len(errors) > 0 {
+		log.Println("")
+		log.Println("=== Failures ===")
+
+		byReason := make(map[string][]ProcessingError)
+		for _, e := range errors {
+			byReason[e.Reason] = append(byReason[e.Reason], e)
+		}
+
+		for reason, errs := range byReason {
+			log.Printf("[%s] %d failures:", reason, len(errs))
+			for _, e := range errs {
+				log.Printf("  - %s: %v", e.NhkID, e.Err)
+			}
+		}
+	}
+	log.Println("==========================")
+}
+
+func classifyError(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	errStr := err.Error()
+
+	switch {
+	case strings.Contains(errStr, "429") || strings.Contains(errStr, "RESOURCE_EXHAUSTED"):
+		return "rate_limit"
+	case strings.Contains(errStr, "context deadline exceeded") || strings.Contains(errStr, "timeout"):
+		return "timeout"
+	case strings.Contains(errStr, "JSON parse") || strings.Contains(errStr, "unexpected end of JSON"):
+		return "json_parse"
+	case strings.Contains(errStr, "empty response"):
+		return "empty_response"
+	case strings.Contains(errStr, "paragraph count mismatch") || strings.Contains(errStr, "missing tokens"):
+		return "tokenization_mismatch"
+	case strings.Contains(errStr, "API error"):
+		return "api_error"
+	case strings.Contains(errStr, "scrape") || strings.Contains(errStr, "element"):
+		return "scrape_error"
+	default:
+		return "other"
+	}
 }
 
 func (s *Scraper) fetchNewsIDs() ([]string, error) {
@@ -120,51 +220,78 @@ func (s *Scraper) fetchNewsIDs() ([]string, error) {
 }
 
 func (s *Scraper) processArticle(ctx context.Context, browser *rod.Browser, nhkID string) error {
-	url := fmt.Sprintf("https://www3.nhk.or.jp/news/easy/%s/%s.html", nhkID, nhkID)
-	page := browser.MustPage(url)
-	defer page.MustClose()
-	page.MustWaitLoad()
-	page.MustWaitStable()
+	log.Printf("Processing %s...", nhkID)
 
-	for _, b := range page.MustElements("button") {
-		if regexp.MustCompile(`understand|確認しました`).MatchString(b.MustText()) {
-			b.MustClick()
-			break
+	url := fmt.Sprintf("https://www3.nhk.or.jp/news/easy/%s/%s.html", nhkID, nhkID)
+
+	var (
+		title     string
+		dateStr   string
+		rawTexts  []string
+		positions []int
+	)
+
+	scrapeErr := rod.Try(func() {
+		page := browser.MustPage(url).Timeout(60 * time.Second)
+		defer func() {
+			page.CancelTimeout().Close()
+		}()
+		page.MustWaitLoad()
+		page.MustWaitStable()
+
+		for _, b := range page.MustElements("button") {
+			if regexp.MustCompile(`understand|確認しました`).MatchString(b.MustText()) {
+				b.MustClick()
+				break
+			}
 		}
+
+		title = page.MustElement(".article-title").MustText()
+		dateStr = page.MustElement(".article-date").MustText()
+
+		article := page.MustElement(".article-body")
+		ps := article.MustElements("p")
+
+		for i, p := range ps {
+			rawText := p.MustEval(`() => {
+				let clone = this.cloneNode(true);
+				clone.querySelectorAll('rt').forEach(rt => rt.remove());
+				return clone.textContent;
+			}`).String()
+
+			if rawText == "" {
+				continue
+			}
+			rawTexts = append(rawTexts, rawText)
+			positions = append(positions, i)
+		}
+	})
+	if scrapeErr != nil {
+		return fmt.Errorf("failed to scrape article: %w", errors.Unwrap(scrapeErr))
 	}
 
-	title := page.MustElement(".article-title").MustText()
-	dateStr := page.MustElement(".article-date").MustText()
+	if len(rawTexts) == 0 {
+		return fmt.Errorf("no paragraphs found in article")
+	}
+
 	publishedAt := parseJapaneseDate(dateStr)
 
-	article := page.MustElement(".article-body")
-	ps := article.MustElements("p")
+	log.Printf("  Tokenizing %d paragraphs in batch...", len(rawTexts))
+	allTokens, err := s.tokenizer.TokenizeBatch(ctx, rawTexts)
+	if err != nil {
+		return fmt.Errorf("batch tokenization failed: %w", err)
+	}
 
 	var paragraphs []store.Paragraph
-	for i, p := range ps {
-		rawText := p.MustEval(`() => {
-			let clone = this.cloneNode(true);
-			clone.querySelectorAll('rt').forEach(rt => rt.remove());
-			return clone.textContent;
-		}`).String()
-
-		if rawText == "" {
-			continue
-		}
-
-		tokens, err := s.tokenizer.Tokenize(ctx, rawText)
-		if err != nil {
-			return fmt.Errorf("tokenization failed for paragraph %d: %w", i, err)
-		}
-
+	for i, tokens := range allTokens {
 		paragraphs = append(paragraphs, store.Paragraph{
-			Position: i,
-			RawText:  rawText,
+			Position: positions[i],
+			RawText:  rawTexts[i],
 			Tokens:   tokens,
 		})
-
-		time.Sleep(500 * time.Millisecond)
 	}
+
+	log.Printf("  Got %d tokens total", countTokens(allTokens))
 
 	news := &store.News{
 		NHKID:       nhkID,
@@ -174,6 +301,14 @@ func (s *Scraper) processArticle(ctx context.Context, browser *rod.Browser, nhkI
 	}
 
 	return s.store.InsertNews(ctx, news, paragraphs)
+}
+
+func countTokens(allTokens [][]store.Token) int {
+	total := 0
+	for _, tokens := range allTokens {
+		total += len(tokens)
+	}
+	return total
 }
 
 func parseJapaneseDate(s string) *time.Time {

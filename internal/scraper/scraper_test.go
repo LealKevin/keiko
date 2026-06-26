@@ -1,13 +1,29 @@
 package scraper
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/go-rod/rod"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// A timed-out rod Must* call panics with context.DeadlineExceeded. rod.Try must
+// recover it (instead of crashing the process), and after unwrapping it must
+// classify as a timeout so it is recorded as a retryable failure.
+func TestScrapePanicRecoveredAndClassified(t *testing.T) {
+	scrapeErr := rod.Try(func() {
+		panic(context.DeadlineExceeded)
+	})
+	require.Error(t, scrapeErr)
+
+	err := fmt.Errorf("failed to scrape article: %w", errors.Unwrap(scrapeErr))
+	assert.Equal(t, "timeout", classifyError(err))
+}
 
 func TestParseJapaneseDate(t *testing.T) {
 	tests := []struct {

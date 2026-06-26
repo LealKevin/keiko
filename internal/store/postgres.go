@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS scheduler_state (
     value      TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS news_failures (
+    nhk_id       VARCHAR(20) PRIMARY KEY,
+    error_type   VARCHAR(50) NOT NULL,
+    error_msg    TEXT NOT NULL,
+    attempts     INTEGER DEFAULT 1,
+    first_failed TIMESTAMP DEFAULT NOW(),
+    last_failed  TIMESTAMP DEFAULT NOW()
+);
 `
 
 type Store struct {
@@ -214,4 +223,75 @@ func (s *Store) SetLastRun(ctx context.Context, t time.Time) error {
 		t,
 	)
 	return err
+}
+
+const maxRetries = 3
+
+type NewsFailure struct {
+	NhkID       string
+	ErrorType   string
+	ErrorMsg    string
+	Attempts    int
+	FirstFailed time.Time
+	LastFailed  time.Time
+}
+
+func (s *Store) RecordFailure(ctx context.Context, nhkID, errorType, errorMsg string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO news_failures (nhk_id, error_type, error_msg)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (nhk_id) DO UPDATE SET
+		     error_type = $2,
+		     error_msg = $3,
+		     attempts = news_failures.attempts + 1,
+		     last_failed = NOW()`,
+		nhkID, errorType, errorMsg,
+	)
+	return err
+}
+
+func (s *Store) ShouldSkipArticle(ctx context.Context, nhkID string) (bool, *NewsFailure, error) {
+	var f NewsFailure
+	err := s.db.QueryRowContext(ctx,
+		`SELECT nhk_id, error_type, error_msg, attempts, first_failed, last_failed
+		 FROM news_failures
+		 WHERE nhk_id = $1`,
+		nhkID,
+	).Scan(&f.NhkID, &f.ErrorType, &f.ErrorMsg, &f.Attempts, &f.FirstFailed, &f.LastFailed)
+
+	if err == sql.ErrNoRows {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+
+	return f.Attempts >= maxRetries, &f, nil
+}
+
+func (s *Store) ClearFailure(ctx context.Context, nhkID string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM news_failures WHERE nhk_id = $1", nhkID)
+	return err
+}
+
+func (s *Store) GetAllFailures(ctx context.Context) ([]NewsFailure, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT nhk_id, error_type, error_msg, attempts, first_failed, last_failed
+		 FROM news_failures
+		 ORDER BY last_failed DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var failures []NewsFailure
+	for rows.Next() {
+		var f NewsFailure
+		if err := rows.Scan(&f.NhkID, &f.ErrorType, &f.ErrorMsg, &f.Attempts, &f.FirstFailed, &f.LastFailed); err != nil {
+			return nil, err
+		}
+		failures = append(failures, f)
+	}
+	return failures, rows.Err()
 }
