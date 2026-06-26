@@ -41,12 +41,12 @@ type Model struct {
 
 	loopIntervalInput textinput.Model
 
-	currentView       settingsView
-	deckCursor        int
-	availableDecks    []anki.DeckInfo
-	ankiConnected     bool
-	ankiClient        *anki.Client
-	quitOnDeckSelect  bool // true when opened via --deck-selector
+	currentView      settingsView
+	deckCursor       int
+	availableDecks   []anki.DeckInfo
+	ankiConnected    bool
+	ankiClient       *anki.Client
+	quitOnDeckSelect bool // true when opened via --deck-selector
 }
 
 func createInput(config *config.Config, field field) textinput.Model {
@@ -230,14 +230,14 @@ var (
 			Foreground(lipgloss.Color("205")).
 			Padding(0, 1)
 	inactiveField = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
+			Foreground(lipgloss.Color("230")).
 			Padding(0, 1)
 
 	JLPTactiveField = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("205")).
 			Padding(0, 1)
 	JLPTinactiveField = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("240")).
+				Foreground(lipgloss.Color("230")).
 				Padding(0, 1)
 
 	JLPTLEVELS = []int{5, 4, 3, 2, 1}
@@ -330,7 +330,7 @@ func (m *Model) renderDeckSelector() string {
 
 	cursorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 	selectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	unselectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	unselectedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("230"))
 
 	const maxDeckNameLen = 35
 

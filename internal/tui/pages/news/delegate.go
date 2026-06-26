@@ -72,7 +72,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	if selected {
 		style = style.Foreground(lipgloss.Color("205")).Bold(true)
 	} else {
-		style = style.Foreground(lipgloss.Color("240"))
+		style = style.Foreground(lipgloss.Color("230"))
 	}
 
 	fmt.Fprint(w, style.Render(line1)+"\n"+style.Render(line2))

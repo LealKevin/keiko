@@ -3,11 +3,11 @@ package news
 import (
 	"strings"
 
+	"github.com/LealKevin/keiko/internal/db"
+	"github.com/LealKevin/keiko/internal/news"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/LealKevin/keiko/internal/db"
-	"github.com/LealKevin/keiko/internal/news"
 )
 
 type Mode int
@@ -195,7 +195,7 @@ func (m *Model) View() string {
 	}
 	contentWidth := m.width - listWidth - 1
 
-	borderColor := lipgloss.Color("240")
+	borderColor := lipgloss.Color("230")
 	borderStyle := lipgloss.NewStyle().Foreground(borderColor)
 
 	listStyle := lipgloss.NewStyle().Width(listWidth)

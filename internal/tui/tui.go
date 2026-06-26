@@ -136,7 +136,7 @@ var (
 			Foreground(lipgloss.Color("205")).
 			Padding(0, 1)
 	inactiveColor = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240")).
+			Foreground(lipgloss.Color("230")).
 			Padding(0, 1)
 	containerMargin = 10
 )
@@ -168,7 +168,7 @@ func (m model) View() string {
 	}
 
 	line := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("240")).
+		Foreground(lipgloss.Color("230")).
 		Render(strings.Repeat("─", m.width))
 	doc.WriteString("\n" + line + "\n")
 
