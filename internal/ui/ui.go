@@ -237,6 +237,7 @@ func (s *StatusBar) fetchAnkiCards() {
 
 func (s *StatusBar) fetchNextCard() {
 	if len(s.dueCards) == 0 {
+		// Queue empty - refetch if there are still due cards (learning cards may have become due)
 		if s.dueCount > 0 {
 			s.fetchAnkiCards()
 			return
@@ -312,7 +313,12 @@ func (s *StatusBar) AnswerCard(ease int) {
 		return
 	}
 
-	s.fetchAnkiCards()
+	// Only decrease due count on "Good" - "Again" keeps the card in learning
+	if ease >= 3 {
+		s.dueCount--
+	}
+
+	s.fetchNextCard()
 	s.Redraw()
 }
 
@@ -328,6 +334,12 @@ func (s *StatusBar) RefreshAnkiDueCount() {
 		return
 	}
 	s.dueCount = count
+
+	// If we were done but now have due cards (learning cards became due), refetch
+	if s.ankiState == StateDone && count > 0 {
+		s.fetchAnkiCards()
+		s.Redraw()
+	}
 }
 
 func (s *StatusBar) OnConfigChange() {
