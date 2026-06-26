@@ -102,10 +102,8 @@ news_server_url: "..."     # News API endpoint
 ## Screenshots
 
 ### Status Bar
-```
-[Core2k: 12 due] 食べる → [F4]              # Question
-[Core2k: 11 due] 食べる - to eat → [F5|F6]  # Answer revealed
-```
+
+![Status Bar](assets/status_bar.png)
 
 ### TUI News Reader
 
