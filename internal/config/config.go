@@ -55,7 +55,7 @@ func (c *Config) Init() error {
 	c.Viper.SetDefault("is_translation_visible", true)
 	c.Viper.SetDefault("anki_deck", "")
 	c.Viper.SetDefault("anki_mode_enabled", false)
-	c.Viper.SetDefault("news_server_url", "http://localhost:8080")
+	c.Viper.SetDefault("news_server_url", "http://localhost:8083")
 
 	err := c.Viper.ReadInConfig()
 	if err != nil {
